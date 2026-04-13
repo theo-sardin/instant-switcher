@@ -54,5 +54,8 @@ targets:
     platform: macOS
     sources:
       - path: InstantSwitcherTests
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
     dependencies:
       - target: InstantSwitcher
