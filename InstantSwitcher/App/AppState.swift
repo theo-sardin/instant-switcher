@@ -79,6 +79,18 @@ final class AppState: ObservableObject {
         systemOverride.digitsEnabled = config.systemOverrides.digits
     }
 
+    // MARK: - Launch at login
+
+    func setLaunchAtLogin(_ on: Bool) {
+        do {
+            try LaunchAtLogin.set(on)
+            config.launchAtLogin = on
+            persist()
+        } catch {
+            NSLog("LaunchAtLogin toggle failed: \(error)")
+        }
+    }
+
     // MARK: - Registration
 
     private func registerAllBindings() {

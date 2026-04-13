@@ -34,6 +34,12 @@ struct SystemTab: View {
                     )
                 }
             }
+            Section("General") {
+                Toggle("Launch at login", isOn: SwiftUI.Binding(
+                    get: { state.config.launchAtLogin },
+                    set: { state.setLaunchAtLogin($0) }
+                ))
+            }
         }
         .formStyle(.grouped)
         .onAppear { accessibilityTrusted = Permissions.isAccessibilityTrusted() }
