@@ -8,6 +8,7 @@ final class AppState: ObservableObject {
     let engine: ShortcutEngine
     let core: ISSInvoking
     let locator: SpaceLocating
+    let systemOverride: SystemOverride
     private let store: ConfigStore
 
     init(store: ConfigStore = ConfigStore(),
@@ -18,8 +19,10 @@ final class AppState: ObservableObject {
         self.core = core
         self.locator = locator
         self.engine = ShortcutEngine(locator: locator, core: core, activator: activator)
+        self.systemOverride = SystemOverride(engine: engine)
         self.config = store.load()
         registerAllBindings()
+        applyOverrideState()
     }
 
     // MARK: - Binding CRUD
@@ -62,11 +65,18 @@ final class AppState: ObservableObject {
     func setOverride(arrows: Bool) {
         config.systemOverrides.arrows = arrows
         persist()
+        applyOverrideState()
     }
 
     func setOverride(digits: Bool) {
         config.systemOverrides.digits = digits
         persist()
+        applyOverrideState()
+    }
+
+    private func applyOverrideState() {
+        systemOverride.arrowsEnabled = config.systemOverrides.arrows
+        systemOverride.digitsEnabled = config.systemOverrides.digits
     }
 
     // MARK: - Registration
