@@ -8,3 +8,5 @@ InstantSwitcher.xcodeproj
 *.xcworkspace
 .swiftpm/
 
+
+.idea/
