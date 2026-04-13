@@ -2,11 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a native macOS menu-bar app (`InstantSwitcher.app`) that wraps `ISSCli` to provide global hotkeys for (1) focusing a specific app on its current space with no animation, (2) jumping to a specific space, and (3) overriding macOS's native Ctrl+Arrows / Ctrl+1..9 space shortcuts.
+**Goal:** Build a self-contained macOS menu-bar app (`InstantSwitcher.app`) that vendors the MIT-licensed core of [InstantSpaceSwitcher](https://github.com/jurplel/InstantSpaceSwitcher) and ships as a single `.dmg`. Provides global hotkeys for (1) focusing a specific app on its current space with no animation, (2) jumping to a specific space, and (3) overriding macOS's native Ctrl+Arrows / Ctrl+1..9 space shortcuts.
 
-**Architecture:** SwiftUI menu-bar app with `MenuBarExtra` + `Settings` scenes. Business logic split into `ShortcutEngine` (dispatches hotkey actions), `SpaceLocator` (private CGS APIs for per-app space lookup), `ISSRunner` (shells out to `ISSCli`), and `SystemOverride` (`CGEventTap` for native-shortcut interception). Config persisted as JSON.
+**Architecture:** SwiftUI menu-bar app with `MenuBarExtra` + `Settings` scenes. Upstream ISS C core (`ISS.c`, `ISS.h`) vendored under `Vendor/InstantSpaceSwitcher/`, compiled into the app target via xcodegen, accessed from Swift through a bridging header. Business logic split into `ShortcutEngine` (dispatches hotkey actions), `SpaceLocator` (private CGS APIs for per-app space lookup), `ISSCore` (Swift wrapper over the vendored C library), and `SystemOverride` (`CGEventTap` for native-shortcut interception). Config persisted as JSON.
 
-**Tech Stack:** Swift 5.9+, SwiftUI, macOS 13+, [`KeyboardShortcuts`](https://github.com/sindresorhus/KeyboardShortcuts) SPM package, private CoreGraphics/SkyLight symbols, `SMAppService`, XCTest, [`xcodegen`](https://github.com/yonaskolb/XcodeGen) for project generation.
+**Tech Stack:** Swift 5.9+, SwiftUI, macOS 13+, C (vendored upstream), [`KeyboardShortcuts`](https://github.com/sindresorhus/KeyboardShortcuts) SPM package, private CoreGraphics/SkyLight symbols, `SMAppService`, XCTest, [`xcodegen`](https://github.com/yonaskolb/XcodeGen) for project generation.
+
+**Upstream pin:** `jurplel/InstantSpaceSwitcher@1d06568790050531935760be17b65e4d3727c00a` (2026-04-12). MIT License. Attribution preserved.
 
 ---
 
@@ -14,37 +16,53 @@
 
 ```
 instant-switcher/
-├── project.yml                               # xcodegen manifest
+├── project.yml
 ├── .gitignore
 ├── README.md
+├── scripts/
+│   └── build-dmg.sh
+├── Vendor/
+│   └── InstantSpaceSwitcher/
+│       ├── LICENSE                                # upstream, verbatim
+│       ├── UPSTREAM.md                            # origin URL + pinned commit + list of files taken
+│       └── Sources/ISS/
+│           ├── ISS.c                              # verbatim from upstream
+│           └── include/ISS.h                      # verbatim from upstream
 ├── InstantSwitcher/
 │   ├── App/
-│   │   ├── InstantSwitcherApp.swift          # @main; Settings + MenuBarExtra scenes
-│   │   └── MenuBarView.swift                 # dropdown UI
+│   │   ├── InstantSwitcherApp.swift
+│   │   ├── AppState.swift
+│   │   └── MenuBarView.swift
 │   ├── Settings/
-│   │   ├── SettingsWindow.swift              # tab container
-│   │   ├── ShortcutsTab.swift                # bindings list, add/remove
-│   │   ├── SystemTab.swift                   # override toggles, launch-at-login
-│   │   └── AboutTab.swift                    # version, ISS status
+│   │   ├── SettingsWindow.swift
+│   │   ├── ShortcutsTab.swift
+│   │   ├── SystemTab.swift
+│   │   ├── AboutTab.swift
+│   │   └── AppPickerView.swift
 │   ├── Engine/
-│   │   ├── ShortcutEngine.swift              # orchestrates hotkey → locate → jump → activate
-│   │   └── SystemOverride.swift              # CGEventTap wrapper
+│   │   ├── ShortcutEngine.swift
+│   │   └── SystemOverride.swift
 │   ├── Services/
-│   │   ├── ISSRunner.swift                   # Process wrapper (protocol + live impl)
-│   │   ├── SpaceLocator.swift                # CGS wrapper (protocol + live impl)
-│   │   ├── ConfigStore.swift                 # JSON atomic load/save + migration
-│   │   ├── LaunchAtLogin.swift               # SMAppService helper
-│   │   └── ShortcutNames.swift               # KeyboardShortcuts.Name registry
+│   │   ├── ISSCore.swift
+│   │   ├── SpaceLocator.swift
+│   │   ├── ConfigStore.swift
+│   │   ├── LaunchAtLogin.swift
+│   │   ├── ShortcutNames.swift
+│   │   └── Permissions.swift
 │   ├── Models/
-│   │   ├── Config.swift                      # Config, SystemOverrides
-│   │   └── Binding.swift                     # Binding enum, AppBinding, SpaceBinding
+│   │   ├── Config.swift
+│   │   └── Binding.swift
+│   ├── Bridging/
+│   │   └── InstantSwitcher-Bridging-Header.h
 │   └── Resources/
 │       ├── Assets.xcassets
-│       └── Info.plist
+│       ├── Info.plist
+│       └── InstantSwitcher.entitlements
 └── InstantSwitcherTests/
     ├── Fakes/
     │   ├── FakeSpaceLocator.swift
-    │   └── FakeISSRunner.swift
+    │   ├── FakeISSCore.swift
+    │   └── FakeAppActivator.swift
     ├── BindingCodableTests.swift
     ├── ConfigStoreTests.swift
     └── ShortcutEngineTests.swift
@@ -52,29 +70,86 @@ instant-switcher/
 
 ---
 
-## Task 1: Project scaffold with xcodegen
+## Task 1: Project scaffold with xcodegen, vendor upstream C core
 
 **Files:**
 - Create: `project.yml`
+- Create: `Vendor/InstantSpaceSwitcher/LICENSE`
+- Create: `Vendor/InstantSpaceSwitcher/UPSTREAM.md`
+- Create: `Vendor/InstantSpaceSwitcher/Sources/ISS/ISS.c`
+- Create: `Vendor/InstantSpaceSwitcher/Sources/ISS/include/ISS.h`
+- Create: `InstantSwitcher/Bridging/InstantSwitcher-Bridging-Header.h`
 - Create: `InstantSwitcher/Resources/Info.plist`
+- Create: `InstantSwitcher/Resources/InstantSwitcher.entitlements`
+- Create: `InstantSwitcher/Resources/Assets.xcassets/Contents.json`
 - Create: `InstantSwitcher/App/InstantSwitcherApp.swift`
 - Modify: `.gitignore`
 
-- [ ] **Step 1: Install xcodegen locally if missing**
+- [ ] **Step 1: Fetch upstream at the pinned commit**
 
-Run: `which xcodegen || brew install xcodegen`
-Expected: path printed, or homebrew install completes.
+```bash
+git clone --depth 1 https://github.com/jurplel/InstantSpaceSwitcher.git /tmp/iss-upstream
+( cd /tmp/iss-upstream && git fetch --depth 1 origin 1d06568790050531935760be17b65e4d3727c00a && git checkout 1d06568790050531935760be17b65e4d3727c00a )
+```
 
-- [ ] **Step 2: Write `.gitignore` additions**
+If the `git fetch` by SHA fails (GitHub requires `uploadpack.allowReachableSHA1InWant`), fall back to cloning without `--depth`:
+```bash
+rm -rf /tmp/iss-upstream
+git clone https://github.com/jurplel/InstantSpaceSwitcher.git /tmp/iss-upstream
+( cd /tmp/iss-upstream && git checkout 1d06568790050531935760be17b65e4d3727c00a )
+```
+
+- [ ] **Step 2: Copy vendored files**
+
+```bash
+mkdir -p Vendor/InstantSpaceSwitcher/Sources/ISS/include
+cp /tmp/iss-upstream/LICENSE Vendor/InstantSpaceSwitcher/LICENSE
+cp /tmp/iss-upstream/Sources/ISS/ISS.c Vendor/InstantSpaceSwitcher/Sources/ISS/ISS.c
+cp /tmp/iss-upstream/Sources/ISS/include/ISS.h Vendor/InstantSpaceSwitcher/Sources/ISS/include/ISS.h
+```
+
+- [ ] **Step 3: Write `Vendor/InstantSpaceSwitcher/UPSTREAM.md`**
+
+```markdown
+# Vendored: InstantSpaceSwitcher (core)
+
+**Upstream:** https://github.com/jurplel/InstantSpaceSwitcher
+**License:** MIT (see `LICENSE`)
+**Pinned commit:** `1d06568790050531935760be17b65e4d3727c00a` (2026-04-12)
+
+## Files taken (verbatim)
+
+- `Sources/ISS/ISS.c`
+- `Sources/ISS/include/ISS.h`
+- `LICENSE`
+
+Upstream's Swift/AppKit app code, tests, and build scripts are intentionally
+not vendored — we provide our own SwiftUI UI.
+
+## Updating
+
+To refresh to a new upstream commit:
+
+1. `git clone https://github.com/jurplel/InstantSpaceSwitcher.git /tmp/iss-upstream`
+2. `cd /tmp/iss-upstream && git checkout <new-sha>`
+3. `cp` the three files above back into place.
+4. Update the pinned commit in this file and in `docs/superpowers/plans/2026-04-13-instant-switcher-implementation.md`.
+5. Build and run the smoke test.
+```
+
+- [ ] **Step 4: Write `.gitignore` additions**
 
 Append to `.gitignore`:
 ```
 InstantSwitcher.xcodeproj
 *.xcworkspace
 .swiftpm/
+build/
+DerivedData/
+*.xcuserstate
 ```
 
-- [ ] **Step 3: Write `project.yml`**
+- [ ] **Step 5: Write `project.yml`**
 
 ```yaml
 name: InstantSwitcher
@@ -91,6 +166,7 @@ settings:
     CURRENT_PROJECT_VERSION: "1"
     CODE_SIGN_STYLE: Automatic
     CODE_SIGN_IDENTITY: "-"
+    CLANG_ENABLE_MODULES: YES
 packages:
   KeyboardShortcuts:
     url: https://github.com/sindresorhus/KeyboardShortcuts
@@ -101,18 +177,30 @@ targets:
     platform: macOS
     sources:
       - path: InstantSwitcher
+      - path: Vendor/InstantSpaceSwitcher/Sources/ISS
     resources:
       - path: InstantSwitcher/Resources/Assets.xcassets
+      - path: Vendor/InstantSpaceSwitcher/LICENSE
     info:
       path: InstantSwitcher/Resources/Info.plist
       properties:
         LSUIElement: true
         CFBundleDisplayName: InstantSwitcher
-        NSHumanReadableCopyright: "Copyright © 2026"
+        NSHumanReadableCopyright: "© 2026. Includes InstantSpaceSwitcher (MIT) by jurplel."
     entitlements:
       path: InstantSwitcher/Resources/InstantSwitcher.entitlements
       properties:
         com.apple.security.app-sandbox: false
+    settings:
+      base:
+        SWIFT_OBJC_BRIDGING_HEADER: InstantSwitcher/Bridging/InstantSwitcher-Bridging-Header.h
+        HEADER_SEARCH_PATHS:
+          - $(SRCROOT)/Vendor/InstantSpaceSwitcher/Sources/ISS/include
+        OTHER_LDFLAGS:
+          - -framework
+          - ApplicationServices
+          - -framework
+          - IOKit
     dependencies:
       - package: KeyboardShortcuts
   InstantSwitcherTests:
@@ -124,28 +212,40 @@ targets:
       - target: InstantSwitcher
 ```
 
-- [ ] **Step 4: Create empty `Info.plist` and entitlements**
+- [ ] **Step 6: Create bridging header**
 
-Create `InstantSwitcher/Resources/Info.plist`:
+`InstantSwitcher/Bridging/InstantSwitcher-Bridging-Header.h`:
+```c
+#ifndef InstantSwitcher_Bridging_Header_h
+#define InstantSwitcher_Bridging_Header_h
+
+#import "ISS.h"
+
+#endif
+```
+
+- [ ] **Step 7: Create empty `Info.plist`, entitlements, and asset catalog**
+
+`InstantSwitcher/Resources/Info.plist`:
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict/></plist>
 ```
 
-Create `InstantSwitcher/Resources/InstantSwitcher.entitlements`:
+`InstantSwitcher/Resources/InstantSwitcher.entitlements`:
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict/></plist>
 ```
 
-Create an empty `InstantSwitcher/Resources/Assets.xcassets/Contents.json`:
+`InstantSwitcher/Resources/Assets.xcassets/Contents.json`:
 ```json
 { "info": { "author": "xcode", "version": 1 } }
 ```
 
-- [ ] **Step 5: Create minimal app entry point**
+- [ ] **Step 8: Create minimal app entry point**
 
 `InstantSwitcher/App/InstantSwitcherApp.swift`:
 ```swift
@@ -164,20 +264,22 @@ struct InstantSwitcherApp: App {
 }
 ```
 
-- [ ] **Step 6: Generate the Xcode project and build**
+- [ ] **Step 9: Generate and build**
 
-Run:
 ```bash
 xcodegen generate
-xcodebuild -scheme InstantSwitcher -configuration Debug -derivedDataPath build build | tail -20
+xcodebuild -scheme InstantSwitcher -configuration Debug -derivedDataPath build build 2>&1 | tail -30
 ```
-Expected: `** BUILD SUCCEEDED **`.
+Expected: `** BUILD SUCCEEDED **`. The vendored C sources must compile and link alongside the Swift code. If clang reports missing private CGS symbols at link time, they're declared weak in `ISS.c` — verify with `nm build/Build/Products/Debug/InstantSwitcher.app/Contents/MacOS/InstantSwitcher | grep CGS`.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 10: Commit the vendor + scaffold separately for a clean log**
 
 ```bash
+git add Vendor
+git commit -m "Vendor InstantSpaceSwitcher core (MIT, pin 1d06568)"
+
 git add .gitignore project.yml InstantSwitcher
-git commit -m "Scaffold InstantSwitcher Xcode project and menu-bar stub"
+git commit -m "Scaffold SwiftUI menu-bar app target with C bridge"
 ```
 
 ---
@@ -189,7 +291,7 @@ git commit -m "Scaffold InstantSwitcher Xcode project and menu-bar stub"
 - Create: `InstantSwitcher/Models/Config.swift`
 - Test: `InstantSwitcherTests/BindingCodableTests.swift`
 
-- [ ] **Step 1: Write failing test for `AppBinding` round-trip**
+- [ ] **Step 1: Write failing tests**
 
 `InstantSwitcherTests/BindingCodableTests.swift`:
 ```swift
@@ -250,12 +352,7 @@ final class BindingCodableTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 2: Run the test, expect failure**
-
-Run: `xcodebuild -scheme InstantSwitcher test -derivedDataPath build 2>&1 | tail -30`
-Expected: compile failure — `Binding`, `AppBinding`, `Config` unresolved.
-
-- [ ] **Step 3: Implement `Binding.swift`**
+- [ ] **Step 2: Implement `Binding.swift`**
 
 ```swift
 import Foundation
@@ -309,7 +406,7 @@ enum Binding: Codable, Identifiable, Hashable {
 }
 ```
 
-- [ ] **Step 4: Implement `Config.swift`**
+- [ ] **Step 3: Implement `Config.swift`**
 
 ```swift
 import Foundation
@@ -338,12 +435,15 @@ struct Config: Codable, Hashable {
 }
 ```
 
-- [ ] **Step 5: Run tests, expect pass**
+- [ ] **Step 4: Regenerate, build, test**
 
-Run: `xcodebuild -scheme InstantSwitcher test -derivedDataPath build 2>&1 | tail -20`
-Expected: tests pass, `TEST SUCCEEDED`.
+```bash
+xcodegen generate
+xcodebuild -scheme InstantSwitcher test -derivedDataPath build 2>&1 | tail -15
+```
+Expected: tests pass.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add InstantSwitcher/Models InstantSwitcherTests/BindingCodableTests.swift
@@ -413,12 +513,7 @@ final class ConfigStoreTests: XCTestCase {
 }
 ```
 
-- [ ] **Step 2: Run tests, expect compile failure**
-
-Run: `xcodebuild -scheme InstantSwitcher test -derivedDataPath build 2>&1 | tail -15`
-Expected: `ConfigStore` unresolved.
-
-- [ ] **Step 3: Implement `ConfigStore.swift`**
+- [ ] **Step 2: Implement `ConfigStore.swift`**
 
 ```swift
 import Foundation
@@ -476,12 +571,15 @@ final class ConfigStore {
 }
 ```
 
-- [ ] **Step 4: Run tests, expect pass**
+- [ ] **Step 3: Build, test**
 
-Run: `xcodebuild -scheme InstantSwitcher test -derivedDataPath build 2>&1 | tail -10`
+```bash
+xcodegen generate
+xcodebuild -scheme InstantSwitcher test -derivedDataPath build 2>&1 | tail -10
+```
 Expected: tests pass.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add InstantSwitcher/Services/ConfigStore.swift InstantSwitcherTests/ConfigStoreTests.swift
@@ -490,135 +588,142 @@ git commit -m "Add ConfigStore with atomic writes and backup-on-corruption"
 
 ---
 
-## Task 4: `ISSRunner` protocol + live impl + fake + test
+## Task 4: `ISSCore` Swift wrapper over the vendored C library
 
 **Files:**
-- Create: `InstantSwitcher/Services/ISSRunner.swift`
-- Create: `InstantSwitcherTests/Fakes/FakeISSRunner.swift`
+- Create: `InstantSwitcher/Services/ISSCore.swift`
+- Create: `InstantSwitcherTests/Fakes/FakeISSCore.swift`
 
-- [ ] **Step 1: Implement the protocol and a fake**
+- [ ] **Step 1: Implement protocol, live impl, and fake**
 
-`InstantSwitcher/Services/ISSRunner.swift`:
+`InstantSwitcher/Services/ISSCore.swift`:
 ```swift
 import Foundation
 import os
 
-enum ISSCommand: Equatable {
-    case left
-    case right
-    case index(Int)
-
-    var args: [String] {
-        switch self {
-        case .left: return ["left"]
-        case .right: return ["right"]
-        case .index(let n): return ["index", String(n)]
-        }
-    }
+struct ISSSpaceStatus: Equatable {
+    let currentIndex: Int   // 1-based
+    let spaceCount: Int
 }
 
 protocol ISSInvoking {
-    var isAvailable: Bool { get }
-    func run(_ command: ISSCommand)
+    /// True once `iss_init()` has returned success.
+    var isInitialized: Bool { get }
+    /// Tries to (re)initialize the C core. Returns true on success.
+    @discardableResult
+    func ensureInitialized() -> Bool
+    func left()
+    func right()
+    func index(_ oneBased: Int)
+    /// Best-effort current space info; nil if the C core is not initialized
+    /// or the query failed.
+    func currentSpaceInfo() -> ISSSpaceStatus?
 }
 
-final class ISSRunner: ISSInvoking {
-    static let defaultCLIPath = "/Applications/InstantSpaceSwitcher.app/Contents/MacOS/ISSCli"
+final class ISSCore: ISSInvoking {
+    static let shared = ISSCore()
 
-    private let cliPath: String
-    private let queue = DispatchQueue(label: "com.theosardin.instantswitcher.iss", qos: .userInitiated)
     private let log = Logger(subsystem: "com.theosardin.instantswitcher", category: "iss")
+    private var initialized = false
+    private let lock = NSLock()
 
-    init(cliPath: String = ISSRunner.defaultCLIPath) {
-        self.cliPath = cliPath
+    init() {
+        _ = ensureInitialized()
     }
 
-    var isAvailable: Bool {
-        var isDir: ObjCBool = false
-        return FileManager.default.fileExists(atPath: cliPath, isDirectory: &isDir) && !isDir.boolValue
+    deinit {
+        if initialized { iss_destroy() }
     }
 
-    func run(_ command: ISSCommand) {
-        let args = command.args
-        let path = cliPath
-        queue.async { [log] in
-            guard FileManager.default.fileExists(atPath: path) else {
-                log.error("ISSCli missing at \(path, privacy: .public)")
-                return
-            }
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: path)
-            process.arguments = args
-            do {
-                try process.run()
-                process.waitUntilExit()
-                if process.terminationStatus != 0 {
-                    log.error("ISSCli exited \(process.terminationStatus) for args \(args, privacy: .public)")
-                }
-            } catch {
-                log.error("ISSCli launch failed: \(error.localizedDescription, privacy: .public)")
-            }
+    var isInitialized: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return initialized
+    }
+
+    @discardableResult
+    func ensureInitialized() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        if initialized { return true }
+        if iss_init() {
+            initialized = true
+            log.info("iss_init succeeded")
+            return true
         }
+        log.error("iss_init failed — Accessibility likely not granted")
+        return false
+    }
+
+    func left() {
+        guard ensureInitialized() else { return }
+        if !iss_switch(ISSDirectionLeft) { log.debug("iss_switch(left) returned false") }
+    }
+
+    func right() {
+        guard ensureInitialized() else { return }
+        if !iss_switch(ISSDirectionRight) { log.debug("iss_switch(right) returned false") }
+    }
+
+    func index(_ oneBased: Int) {
+        guard ensureInitialized(), oneBased >= 1 else { return }
+        let zeroBased = UInt32(oneBased - 1)
+        if !iss_switch_to_index(zeroBased) {
+            log.debug("iss_switch_to_index(\(zeroBased)) returned false")
+        }
+    }
+
+    func currentSpaceInfo() -> ISSSpaceStatus? {
+        guard ensureInitialized() else { return nil }
+        var info = ISSSpaceInfo(currentIndex: 0, spaceCount: 0)
+        let ok = withUnsafeMutablePointer(to: &info) { iss_get_space_info($0) }
+        guard ok else { return nil }
+        return ISSSpaceStatus(currentIndex: Int(info.currentIndex) + 1,
+                              spaceCount: Int(info.spaceCount))
     }
 }
 ```
 
-- [ ] **Step 2: Add fake for tests**
+- [ ] **Step 2: Add fake**
 
-`InstantSwitcherTests/Fakes/FakeISSRunner.swift`:
+`InstantSwitcherTests/Fakes/FakeISSCore.swift`:
 ```swift
 import Foundation
 @testable import InstantSwitcher
 
-final class FakeISSRunner: ISSInvoking {
-    var isAvailable: Bool = true
-    private(set) var calls: [ISSCommand] = []
+enum FakeISSCall: Equatable {
+    case left
+    case right
+    case index(Int)
+}
 
-    func run(_ command: ISSCommand) {
-        calls.append(command)
-    }
+final class FakeISSCore: ISSInvoking {
+    var isInitialized: Bool = true
+    var ensureResult: Bool = true
+    var info: ISSSpaceStatus?
+    private(set) var calls: [FakeISSCall] = []
+
+    @discardableResult
+    func ensureInitialized() -> Bool { ensureResult }
+
+    func left() { calls.append(.left) }
+    func right() { calls.append(.right) }
+    func index(_ oneBased: Int) { calls.append(.index(oneBased)) }
+    func currentSpaceInfo() -> ISSSpaceStatus? { info }
 }
 ```
 
-- [ ] **Step 3: Write integration test for live runner using `/bin/echo` as a stand-in**
-
-Append to `InstantSwitcherTests/ConfigStoreTests.swift` — actually create a new file `InstantSwitcherTests/ISSRunnerLiveTests.swift`:
-```swift
-import XCTest
-@testable import InstantSwitcher
-
-final class ISSRunnerLiveTests: XCTestCase {
-    func testReportsUnavailableWhenPathMissing() {
-        let runner = ISSRunner(cliPath: "/definitely/not/here/ISSCli")
-        XCTAssertFalse(runner.isAvailable)
-    }
-
-    func testReportsAvailableForEcho() {
-        let runner = ISSRunner(cliPath: "/bin/echo")
-        XCTAssertTrue(runner.isAvailable)
-    }
-
-    func testRunDoesNotThrowWithEcho() {
-        let runner = ISSRunner(cliPath: "/bin/echo")
-        runner.run(.index(3))
-        // async; just assert no crash. Give the queue a moment.
-        let exp = expectation(description: "returns")
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) { exp.fulfill() }
-        wait(for: [exp], timeout: 1.0)
-    }
-}
-```
-
-- [ ] **Step 4: Run tests, expect pass**
-
-Run: `xcodebuild -scheme InstantSwitcher test -derivedDataPath build 2>&1 | tail -10`
-Expected: tests pass.
-
-- [ ] **Step 5: Commit**
+- [ ] **Step 3: Build**
 
 ```bash
-git add InstantSwitcher/Services/ISSRunner.swift InstantSwitcherTests/Fakes/FakeISSRunner.swift InstantSwitcherTests/ISSRunnerLiveTests.swift
-git commit -m "Add ISSRunner with protocol, live impl, and fake"
+xcodegen generate
+xcodebuild -scheme InstantSwitcher build -derivedDataPath build 2>&1 | tail -10
+```
+Expected: build succeeds. The C types `ISSDirectionLeft`, `ISSDirectionRight`, `ISSSpaceInfo`, and the functions `iss_init`, `iss_destroy`, `iss_switch`, `iss_switch_to_index`, `iss_get_space_info` must resolve via the bridging header.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add InstantSwitcher/Services/ISSCore.swift InstantSwitcherTests/Fakes/FakeISSCore.swift
+git commit -m "Add ISSCore Swift wrapper over vendored C library"
 ```
 
 ---
@@ -629,9 +734,8 @@ git commit -m "Add ISSRunner with protocol, live impl, and fake"
 - Create: `InstantSwitcher/Services/SpaceLocator.swift`
 - Create: `InstantSwitcherTests/Fakes/FakeSpaceLocator.swift`
 
-- [ ] **Step 1: Implement protocol + CGS-backed impl**
+- [ ] **Step 1: Implement `SpaceLocator.swift`**
 
-`InstantSwitcher/Services/SpaceLocator.swift`:
 ```swift
 import AppKit
 import os
@@ -641,8 +745,8 @@ protocol SpaceLocating {
     func spaceIndex(forBundleID bundleID: String) -> Int?
 }
 
-// Private CGS symbols. These are undocumented and may change across macOS versions.
-// Mirrors what Yabai/AeroSpace/Hammerspoon use.
+// Private CGS symbols. Undocumented; may change across macOS versions.
+// Mirrors the shape used by Yabai/AeroSpace/Hammerspoon.
 @_silgen_name("CGSMainConnectionID")
 private func CGSMainConnectionID() -> Int32
 
@@ -672,7 +776,7 @@ final class SpaceLocator: SpaceLocating {
             return nil
         }
         let conn = CGSMainConnectionID()
-        let mask: Int32 = 0x7  // include all space types
+        let mask: Int32 = 0x7
         guard let spaces = CGSCopySpacesForWindows(conn, mask, [windowID] as CFArray) as? [UInt64],
               let first = spaces.first else {
             return nil
@@ -741,10 +845,13 @@ final class FakeSpaceLocator: SpaceLocating {
 }
 ```
 
-- [ ] **Step 3: Build and run tests**
+- [ ] **Step 3: Build and test**
 
-Run: `xcodebuild -scheme InstantSwitcher test -derivedDataPath build 2>&1 | tail -10`
-Expected: compile succeeds; existing tests still pass. SpaceLocator has no unit tests by design (CGS can't be stubbed in isolation).
+```bash
+xcodegen generate
+xcodebuild -scheme InstantSwitcher test -derivedDataPath build 2>&1 | tail -10
+```
+Expected: build succeeds, existing tests pass. No unit tests for SpaceLocator itself — CGS can't be stubbed in isolation.
 
 - [ ] **Step 4: Commit**
 
@@ -759,6 +866,7 @@ git commit -m "Add SpaceLocator with CGS-backed implementation and fake"
 
 **Files:**
 - Create: `InstantSwitcher/Engine/ShortcutEngine.swift`
+- Create: `InstantSwitcherTests/Fakes/FakeAppActivator.swift`
 - Test: `InstantSwitcherTests/ShortcutEngineTests.swift`
 
 - [ ] **Step 1: Write failing tests**
@@ -770,70 +878,78 @@ import XCTest
 
 final class ShortcutEngineTests: XCTestCase {
     var locator: FakeSpaceLocator!
-    var runner: FakeISSRunner!
+    var core: FakeISSCore!
     var activator: FakeAppActivator!
     var engine: ShortcutEngine!
 
     override func setUp() {
         locator = FakeSpaceLocator()
-        runner = FakeISSRunner()
+        core = FakeISSCore()
         activator = FakeAppActivator()
-        engine = ShortcutEngine(locator: locator, runner: runner, activator: activator)
+        engine = ShortcutEngine(locator: locator, core: core, activator: activator)
     }
 
-    func testSpaceBindingRunsIndexCommand() {
+    func testSpaceBindingCallsIndex() {
         engine.fire(.space(SpaceBinding(id: UUID(), spaceIndex: 4, label: "Four")))
-        XCTAssertEqual(runner.calls, [.index(4)])
+        XCTAssertEqual(core.calls, [.index(4)])
         XCTAssertTrue(activator.activateCalls.isEmpty)
     }
 
     func testAppBindingJumpsToSpaceThenActivates() {
         locator.byBundleID["com.slack"] = 3
-        activator.isRunning["com.slack"] = true
+        activator.running["com.slack"] = true
         engine.fire(.app(AppBinding(id: UUID(), bundleIdentifier: "com.slack", displayName: "Slack", iconPath: nil)))
-        XCTAssertEqual(runner.calls, [.index(3)])
+        XCTAssertEqual(core.calls, [.index(3)])
         XCTAssertEqual(activator.activateCalls, ["com.slack"])
     }
 
     func testAppBindingWithUnknownSpaceSkipsISSButStillActivates() {
-        activator.isRunning["com.slack"] = true
+        activator.running["com.slack"] = true
         engine.fire(.app(AppBinding(id: UUID(), bundleIdentifier: "com.slack", displayName: "Slack", iconPath: nil)))
-        XCTAssertTrue(runner.calls.isEmpty)
+        XCTAssertTrue(core.calls.isEmpty)
         XCTAssertEqual(activator.activateCalls, ["com.slack"])
     }
 
     func testAppBindingLaunchesWhenNotRunning() {
-        activator.isRunning["com.slack"] = false
+        activator.running["com.slack"] = false
         engine.fire(.app(AppBinding(id: UUID(), bundleIdentifier: "com.slack", displayName: "Slack", iconPath: nil)))
         XCTAssertEqual(activator.launchCalls, ["com.slack"])
     }
 
-    func testSystemOverrideLeftRoutesToRunner() {
+    func testSystemOverrideLeftCallsLeft() {
         engine.systemOverride(.left)
-        XCTAssertEqual(runner.calls, [.left])
+        XCTAssertEqual(core.calls, [.left])
     }
 
-    func testSystemOverrideIndexRoutesToRunner() {
+    func testSystemOverrideRightCallsRight() {
+        engine.systemOverride(.right)
+        XCTAssertEqual(core.calls, [.right])
+    }
+
+    func testSystemOverrideIndex() {
         engine.systemOverride(.index(7))
-        XCTAssertEqual(runner.calls, [.index(7)])
+        XCTAssertEqual(core.calls, [.index(7)])
     }
 }
+```
+
+- [ ] **Step 2: Create `FakeAppActivator`**
+
+`InstantSwitcherTests/Fakes/FakeAppActivator.swift`:
+```swift
+import Foundation
+@testable import InstantSwitcher
 
 final class FakeAppActivator: AppActivating {
-    var isRunning: [String: Bool] = [:]
-    var launchCalls: [String] = []
-    var activateCalls: [String] = []
+    var running: [String: Bool] = [:]
+    private(set) var launchCalls: [String] = []
+    private(set) var activateCalls: [String] = []
 
-    func isRunning(bundleID: String) -> Bool { isRunning[bundleID] ?? false }
+    func isRunning(bundleID: String) -> Bool { running[bundleID] ?? false }
     func activate(bundleID: String) { activateCalls.append(bundleID) }
     func launch(bundleID: String) { launchCalls.append(bundleID) }
 }
 ```
-
-- [ ] **Step 2: Run tests, expect failure**
-
-Run: `xcodebuild -scheme InstantSwitcher test -derivedDataPath build 2>&1 | tail -15`
-Expected: `ShortcutEngine`, `AppActivating`, `.systemOverride` unresolved.
 
 - [ ] **Step 3: Implement `ShortcutEngine.swift`**
 
@@ -875,27 +991,27 @@ final class NSWorkspaceAppActivator: AppActivating {
     }
 }
 
-enum SystemOverrideAction {
+enum SystemOverrideAction: Equatable {
     case left, right
     case index(Int)
 }
 
 final class ShortcutEngine {
     private let locator: SpaceLocating
-    private let runner: ISSInvoking
+    private let core: ISSInvoking
     private let activator: AppActivating
     private let log = Logger(subsystem: "com.theosardin.instantswitcher", category: "hotkey")
 
-    init(locator: SpaceLocating, runner: ISSInvoking, activator: AppActivating) {
+    init(locator: SpaceLocating, core: ISSInvoking, activator: AppActivating) {
         self.locator = locator
-        self.runner = runner
+        self.core = core
         self.activator = activator
     }
 
     func fire(_ binding: Binding) {
         switch binding {
         case .space(let s):
-            runner.run(.index(s.spaceIndex))
+            core.index(s.spaceIndex)
         case .app(let a):
             fireApp(a)
         }
@@ -903,16 +1019,16 @@ final class ShortcutEngine {
 
     func systemOverride(_ action: SystemOverrideAction) {
         switch action {
-        case .left:  runner.run(.left)
-        case .right: runner.run(.right)
-        case .index(let n): runner.run(.index(n))
+        case .left:  core.left()
+        case .right: core.right()
+        case .index(let n): core.index(n)
         }
     }
 
     private func fireApp(_ binding: AppBinding) {
         if activator.isRunning(bundleID: binding.bundleIdentifier) {
             if let idx = locator.spaceIndex(forBundleID: binding.bundleIdentifier) {
-                runner.run(.index(idx))
+                core.index(idx)
             } else {
                 log.notice("No space found for \(binding.bundleIdentifier, privacy: .public); activating directly")
             }
@@ -924,66 +1040,66 @@ final class ShortcutEngine {
 }
 ```
 
-- [ ] **Step 4: Run tests, expect pass**
+- [ ] **Step 4: Build and test**
 
-Run: `xcodebuild -scheme InstantSwitcher test -derivedDataPath build 2>&1 | tail -10`
+```bash
+xcodegen generate
+xcodebuild -scheme InstantSwitcher test -derivedDataPath build 2>&1 | tail -10
+```
 Expected: all tests pass.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add InstantSwitcher/Engine InstantSwitcherTests/ShortcutEngineTests.swift
-git commit -m "Add ShortcutEngine orchestrating locator, runner, and app activation"
+git add InstantSwitcher/Engine InstantSwitcherTests/ShortcutEngineTests.swift InstantSwitcherTests/Fakes/FakeAppActivator.swift
+git commit -m "Add ShortcutEngine orchestrating locator, ISS core, and app activation"
 ```
 
 ---
 
-## Task 7: Hotkey name registry + integration with `KeyboardShortcuts`
+## Task 7: Hotkey name registry
 
 **Files:**
 - Create: `InstantSwitcher/Services/ShortcutNames.swift`
 
-- [ ] **Step 1: Implement name registry**
+- [ ] **Step 1: Implement**
 
-`InstantSwitcher/Services/ShortcutNames.swift`:
 ```swift
 import Foundation
 import KeyboardShortcuts
 
 extension KeyboardShortcuts.Name {
-    /// Stable per-binding name derived from the binding UUID.
     static func binding(_ id: UUID) -> KeyboardShortcuts.Name {
         .init("binding.\(id.uuidString)")
     }
-
-    // System override names — fixed.
-    static let systemLeft  = Self("system.left")
-    static let systemRight = Self("system.right")
-    static func systemIndex(_ n: Int) -> Self { Self("system.index.\(n)") }
 }
 ```
 
 - [ ] **Step 2: Build**
 
-Run: `xcodebuild -scheme InstantSwitcher build -derivedDataPath build 2>&1 | tail -10`
+```bash
+xcodebuild -scheme InstantSwitcher build -derivedDataPath build 2>&1 | tail -10
+```
 Expected: build succeeds.
 
 - [ ] **Step 3: Commit**
 
 ```bash
 git add InstantSwitcher/Services/ShortcutNames.swift
-git commit -m "Add KeyboardShortcuts.Name registry for bindings and overrides"
+git commit -m "Add KeyboardShortcuts.Name registry for bindings"
 ```
 
 ---
 
-## Task 8: App-wide state container and hotkey registration
+## Task 8: `AppState` + app wiring + stub views
 
 **Files:**
 - Create: `InstantSwitcher/App/AppState.swift`
 - Modify: `InstantSwitcher/App/InstantSwitcherApp.swift`
+- Create: `InstantSwitcher/App/MenuBarView.swift`
+- Create: `InstantSwitcher/Settings/SettingsWindow.swift`
 
-- [ ] **Step 1: Create `AppState.swift`**
+- [ ] **Step 1: Implement `AppState.swift`**
 
 ```swift
 import Foundation
@@ -994,18 +1110,18 @@ import SwiftUI
 final class AppState: ObservableObject {
     @Published var config: Config
     let engine: ShortcutEngine
-    let runner: ISSInvoking
+    let core: ISSInvoking
     let locator: SpaceLocating
     private let store: ConfigStore
 
     init(store: ConfigStore = ConfigStore(),
-         runner: ISSInvoking = ISSRunner(),
+         core: ISSInvoking = ISSCore.shared,
          locator: SpaceLocating = SpaceLocator(),
          activator: AppActivating = NSWorkspaceAppActivator()) {
         self.store = store
-        self.runner = runner
+        self.core = core
         self.locator = locator
-        self.engine = ShortcutEngine(locator: locator, runner: runner, activator: activator)
+        self.engine = ShortcutEngine(locator: locator, core: core, activator: activator)
         self.config = store.load()
         registerAllBindings()
     }
@@ -1045,7 +1161,7 @@ final class AppState: ObservableObject {
         }
     }
 
-    // MARK: - System override toggles
+    // MARK: - System overrides
 
     func setOverride(arrows: Bool) {
         config.systemOverrides.arrows = arrows
@@ -1079,9 +1195,8 @@ final class AppState: ObservableObject {
 }
 ```
 
-- [ ] **Step 2: Wire `AppState` into `InstantSwitcherApp`**
+- [ ] **Step 2: Rewrite `InstantSwitcherApp.swift`**
 
-Replace the whole of `InstantSwitcher/App/InstantSwitcherApp.swift`:
 ```swift
 import SwiftUI
 
@@ -1104,7 +1219,7 @@ struct InstantSwitcherApp: App {
 }
 ```
 
-- [ ] **Step 3: Create stub views so the app builds**
+- [ ] **Step 3: Create stub views**
 
 `InstantSwitcher/App/MenuBarView.swift`:
 ```swift
@@ -1114,15 +1229,7 @@ struct MenuBarView: View {
     @EnvironmentObject var state: AppState
 
     var body: some View {
-        Button("Settings…") {
-            NSApp.activate(ignoringOtherApps: true)
-            if #available(macOS 14, *) {
-                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-            } else {
-                NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
-            }
-        }
-        .keyboardShortcut(",")
+        SettingsLink { Text("Settings…") }.keyboardShortcut(",")
         Divider()
         Button("Quit") { NSApp.terminate(nil) }.keyboardShortcut("q")
     }
@@ -1140,7 +1247,7 @@ struct SettingsWindow: View {
             Text("System").tabItem { Label("System", systemImage: "gearshape") }
             Text("About").tabItem { Label("About", systemImage: "info.circle") }
         }
-        .frame(width: 560, height: 420)
+        .frame(width: 620, height: 460)
         .padding(20)
     }
 }
@@ -1148,14 +1255,17 @@ struct SettingsWindow: View {
 
 - [ ] **Step 4: Build**
 
-Run: `xcodebuild -scheme InstantSwitcher build -derivedDataPath build 2>&1 | tail -10`
+```bash
+xcodegen generate
+xcodebuild -scheme InstantSwitcher build -derivedDataPath build 2>&1 | tail -10
+```
 Expected: build succeeds.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add InstantSwitcher/App InstantSwitcher/Settings
-git commit -m "Add AppState, menu bar dropdown stub, and settings tab shell"
+git add InstantSwitcher/App InstantSwitcher/Settings/SettingsWindow.swift
+git commit -m "Add AppState, app entry, menu bar and settings stubs"
 ```
 
 ---
@@ -1167,22 +1277,20 @@ git commit -m "Add AppState, menu bar dropdown stub, and settings tab shell"
 - Create: `InstantSwitcher/Settings/AppPickerView.swift`
 - Modify: `InstantSwitcher/Settings/SettingsWindow.swift`
 
-- [ ] **Step 1: Implement `AppPickerView`**
+- [ ] **Step 1: Implement `AppPickerView.swift`**
 
 ```swift
 import AppKit
 import SwiftUI
 
-enum AppPickerResult {
-    struct Info {
-        let bundleID: String
-        let displayName: String
-        let iconPath: String
-    }
+struct PickedApp {
+    let bundleID: String
+    let displayName: String
+    let iconPath: String
 }
 
 enum AppPicker {
-    static func pick() -> AppPickerResult.Info? {
+    static func pick() -> PickedApp? {
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
@@ -1197,12 +1305,12 @@ enum AppPicker {
         let name = (bundle.infoDictionary?["CFBundleDisplayName"] as? String)
             ?? (bundle.infoDictionary?["CFBundleName"] as? String)
             ?? url.deletingPathExtension().lastPathComponent
-        return AppPickerResult.Info(bundleID: bundleID, displayName: name, iconPath: url.path)
+        return PickedApp(bundleID: bundleID, displayName: name, iconPath: url.path)
     }
 }
 ```
 
-- [ ] **Step 2: Implement `ShortcutsTab`**
+- [ ] **Step 2: Implement `ShortcutsTab.swift`**
 
 ```swift
 import KeyboardShortcuts
@@ -1330,33 +1438,16 @@ struct ShortcutsTab: View {
 
 - [ ] **Step 3: Wire into `SettingsWindow`**
 
-Replace `SettingsWindow.swift` body:
-```swift
-import SwiftUI
-
-struct SettingsWindow: View {
-    var body: some View {
-        TabView {
-            ShortcutsTab()
-                .tabItem { Label("Shortcuts", systemImage: "keyboard") }
-            Text("System")
-                .tabItem { Label("System", systemImage: "gearshape") }
-            Text("About")
-                .tabItem { Label("About", systemImage: "info.circle") }
-        }
-        .frame(width: 620, height: 460)
-        .padding(20)
-    }
-}
-```
+Replace the Shortcuts tab text with `ShortcutsTab()`.
 
 - [ ] **Step 4: Build and smoke-run**
 
 ```bash
+xcodegen generate
 xcodebuild -scheme InstantSwitcher build -derivedDataPath build 2>&1 | tail -10
 open build/Build/Products/Debug/InstantSwitcher.app
 ```
-Expected: build succeeds; app runs, Settings window opens, you can pick an app and record a hotkey. Hitting the hotkey should focus the app (space jump may not yet work if the app is on another space, but activation should).
+Expected: build succeeds, Settings window opens, can pick an app, assign hotkey, firing it activates the app. (Space jump likely not yet working until Accessibility is granted, but no crash.)
 
 - [ ] **Step 5: Commit**
 
@@ -1367,12 +1458,13 @@ git commit -m "Add Shortcuts tab with app picker, space sheet, and recorder"
 
 ---
 
-## Task 10: `SystemOverride` — `CGEventTap` for Ctrl+Arrows and Ctrl+Digits
+## Task 10: `SystemOverride` `CGEventTap`
 
 **Files:**
 - Create: `InstantSwitcher/Engine/SystemOverride.swift`
+- Modify: `InstantSwitcher/App/AppState.swift`
 
-- [ ] **Step 1: Implement the tap**
+- [ ] **Step 1: Implement `SystemOverride.swift`**
 
 ```swift
 import CoreGraphics
@@ -1394,11 +1486,7 @@ final class SystemOverride {
         self.engine = engine
     }
 
-    deinit {
-        teardown()
-    }
-
-    // MARK: - Tap lifecycle
+    deinit { teardown() }
 
     private func reconfigure() {
         if arrowsEnabled || digitsEnabled {
@@ -1439,31 +1527,22 @@ final class SystemOverride {
         runLoopSource = nil
     }
 
-    // MARK: - Handling
-
     fileprivate func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         guard type == .keyDown else { return Unmanaged.passUnretained(event) }
 
         let flags = event.flags
         let isControl = flags.contains(.maskControl)
-        let withoutUnmodified = flags.subtracting([.maskControl])
-        let noOtherMods = !withoutUnmodified.contains(.maskCommand)
-            && !withoutUnmodified.contains(.maskAlternate)
-            && !withoutUnmodified.contains(.maskShift)
+        let others = flags.subtracting([.maskControl])
+        let noOtherMods = !others.contains(.maskCommand)
+            && !others.contains(.maskAlternate)
+            && !others.contains(.maskShift)
 
         guard isControl, noOtherMods else { return Unmanaged.passUnretained(event) }
 
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-        // kVK_LeftArrow  = 123, kVK_RightArrow = 124
         if arrowsEnabled {
-            if keyCode == 123 {
-                engine.systemOverride(.left)
-                return nil
-            }
-            if keyCode == 124 {
-                engine.systemOverride(.right)
-                return nil
-            }
+            if keyCode == 123 { engine.systemOverride(.left);  return nil }
+            if keyCode == 124 { engine.systemOverride(.right); return nil }
         }
         if digitsEnabled {
             if let n = digitIndex(for: keyCode) {
@@ -1474,7 +1553,6 @@ final class SystemOverride {
         return Unmanaged.passUnretained(event)
     }
 
-    // Top-row digit virtual keycodes: 18=1, 19=2, 20=3, 21=4, 23=5, 22=6, 26=7, 28=8, 25=9
     private func digitIndex(for keyCode: Int64) -> Int? {
         switch keyCode {
         case 18: return 1
@@ -1490,12 +1568,9 @@ final class SystemOverride {
         }
     }
 
-    // MARK: - C callback
-
     private static let callback: CGEventTapCallBack = { _, type, event, userInfo in
         guard let userInfo else { return Unmanaged.passUnretained(event) }
         let me = Unmanaged<SystemOverride>.fromOpaque(userInfo).takeUnretainedValue()
-        // Tap may be disabled by the system (e.g. timeout); re-enable.
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             if let tap = me.tap { CGEvent.tapEnable(tap: tap, enable: true) }
             return Unmanaged.passUnretained(event)
@@ -1509,41 +1584,58 @@ final class SystemOverride {
 
 - [ ] **Step 2: Wire into `AppState`**
 
-Modify `AppState.swift`:
-- Add stored property: `let systemOverride: SystemOverride`
-- Initialize after `engine`: `self.systemOverride = SystemOverride(engine: engine)`
-- At end of `init` (after `registerAllBindings`), call `applyOverrideState()`
-- Add:
+Add stored property, initialize, and apply state. In `AppState.swift`:
+
+Add after the other stored properties:
+```swift
+let systemOverride: SystemOverride
+```
+
+In `init`, after `self.engine = …`:
+```swift
+self.systemOverride = SystemOverride(engine: engine)
+```
+
+At the end of `init`, after `registerAllBindings()`:
+```swift
+applyOverrideState()
+```
+
+Add method:
 ```swift
 private func applyOverrideState() {
     systemOverride.arrowsEnabled = config.systemOverrides.arrows
     systemOverride.digitsEnabled = config.systemOverrides.digits
 }
 ```
-- In `setOverride(arrows:)` and `setOverride(digits:)`, call `applyOverrideState()` after `persist()`.
 
-- [ ] **Step 3: Add Accessibility usage description to Info.plist**
+Update `setOverride(arrows:)` and `setOverride(digits:)`:
+```swift
+func setOverride(arrows: Bool) {
+    config.systemOverrides.arrows = arrows
+    persist()
+    applyOverrideState()
+}
 
-Modify `project.yml` target `InstantSwitcher` `info.properties`, adding:
-```yaml
-        NSAppleEventsUsageDescription: "InstantSwitcher launches and activates the apps you've bound to shortcuts."
+func setOverride(digits: Bool) {
+    config.systemOverrides.digits = digits
+    persist()
+    applyOverrideState()
+}
 ```
-(Accessibility itself doesn't require a plist string, but AX prompt appears automatically the first time `CGEvent.tapCreate` runs.)
 
-Regenerate project:
+- [ ] **Step 3: Build**
+
 ```bash
 xcodegen generate
+xcodebuild -scheme InstantSwitcher build -derivedDataPath build 2>&1 | tail -10
 ```
-
-- [ ] **Step 4: Build**
-
-Run: `xcodebuild -scheme InstantSwitcher build -derivedDataPath build 2>&1 | tail -10`
 Expected: build succeeds.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add InstantSwitcher/Engine/SystemOverride.swift InstantSwitcher/App/AppState.swift project.yml
+git add InstantSwitcher/Engine/SystemOverride.swift InstantSwitcher/App/AppState.swift
 git commit -m "Add SystemOverride CGEventTap for Ctrl+Arrows and Ctrl+Digits"
 ```
 
@@ -1552,8 +1644,8 @@ git commit -m "Add SystemOverride CGEventTap for Ctrl+Arrows and Ctrl+Digits"
 ## Task 11: System tab — override toggles + Accessibility banner
 
 **Files:**
-- Create: `InstantSwitcher/Settings/SystemTab.swift`
 - Create: `InstantSwitcher/Services/Permissions.swift`
+- Create: `InstantSwitcher/Settings/SystemTab.swift`
 - Modify: `InstantSwitcher/Settings/SettingsWindow.swift`
 
 - [ ] **Step 1: Implement `Permissions.swift`**
@@ -1627,12 +1719,10 @@ struct SystemTab: View {
     private enum Kind { case arrows, digits }
 
     private func enable(_ on: Bool, kind: Kind) {
-        if on && !Permissions.isAccessibilityTrusted(prompt: true) {
-            accessibilityTrusted = false
-            // Still flip the flag; tap will install once permission is granted.
-        } else {
-            accessibilityTrusted = Permissions.isAccessibilityTrusted()
+        if on {
+            _ = Permissions.isAccessibilityTrusted(prompt: true)
         }
+        accessibilityTrusted = Permissions.isAccessibilityTrusted()
         switch kind {
         case .arrows: state.setOverride(arrows: on)
         case .digits: state.setOverride(digits: on)
@@ -1653,11 +1743,12 @@ struct SystemTab: View {
 
 - [ ] **Step 3: Wire into `SettingsWindow`**
 
-Replace the System text placeholder with `SystemTab()`.
+Replace the "System" text placeholder with `SystemTab()`.
 
-- [ ] **Step 4: Build and test**
+- [ ] **Step 4: Build**
 
 ```bash
+xcodegen generate
 xcodebuild -scheme InstantSwitcher build -derivedDataPath build 2>&1 | tail -10
 ```
 Expected: build succeeds.
@@ -1665,7 +1756,7 @@ Expected: build succeeds.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add InstantSwitcher/Settings/SystemTab.swift InstantSwitcher/Services/Permissions.swift InstantSwitcher/Settings/SettingsWindow.swift
+git add InstantSwitcher/Services/Permissions.swift InstantSwitcher/Settings/SystemTab.swift InstantSwitcher/Settings/SettingsWindow.swift
 git commit -m "Add System tab with override toggles and permission banners"
 ```
 
@@ -1675,8 +1766,8 @@ git commit -m "Add System tab with override toggles and permission banners"
 
 **Files:**
 - Create: `InstantSwitcher/Services/LaunchAtLogin.swift`
-- Modify: `InstantSwitcher/Settings/SystemTab.swift`
 - Modify: `InstantSwitcher/App/AppState.swift`
+- Modify: `InstantSwitcher/Settings/SystemTab.swift`
 
 - [ ] **Step 1: Implement `LaunchAtLogin.swift`**
 
@@ -1703,7 +1794,6 @@ enum LaunchAtLogin {
 
 - [ ] **Step 2: Add `setLaunchAtLogin` to `AppState`**
 
-In `AppState.swift`, add:
 ```swift
 func setLaunchAtLogin(_ on: Bool) {
     do {
@@ -1716,9 +1806,9 @@ func setLaunchAtLogin(_ on: Bool) {
 }
 ```
 
-- [ ] **Step 3: Add toggle to System tab**
+- [ ] **Step 3: Add toggle to `SystemTab`**
 
-In `SystemTab.swift`, add a new `Section` after the overrides section:
+After the "Override macOS shortcuts" Section, add:
 ```swift
 Section("General") {
     Toggle("Launch at login", isOn: Binding(
@@ -1744,7 +1834,7 @@ git commit -m "Add launch-at-login toggle via SMAppService"
 
 ---
 
-## Task 13: About tab — ISS detection badge + version
+## Task 13: About tab — ISS status + credit + license
 
 **Files:**
 - Create: `InstantSwitcher/Settings/AboutTab.swift`
@@ -1757,6 +1847,7 @@ import SwiftUI
 
 struct AboutTab: View {
     @EnvironmentObject var state: AppState
+    @State private var initialized: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -1769,22 +1860,32 @@ struct AboutTab: View {
                 }
             }
 
-            issStatusRow
+            coreStatusRow
 
-            Link("InstantSpaceSwitcher (required)", destination: URL(string: "https://interversehq.com/instantspaceswitcher")!)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Credits").font(.headline)
+                Text("Powered by ") + Text("[InstantSpaceSwitcher](https://github.com/jurplel/InstantSpaceSwitcher)")
+                    + Text(" (MIT) by jurplel.")
+                Button("View upstream license") { openLicense() }
+                    .controlSize(.small)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(4)
+        .onAppear { initialized = state.core.isInitialized }
     }
 
-    private var issStatusRow: some View {
+    private var coreStatusRow: some View {
         HStack(spacing: 8) {
-            if state.runner.isAvailable {
+            if initialized {
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                Text("ISSCli detected at \(ISSRunner.defaultCLIPath)").font(.caption)
+                Text("ISS core initialized").font(.caption)
             } else {
-                Image(systemName: "xmark.octagon.fill").foregroundStyle(.red)
-                Text("ISSCli not found — install InstantSpaceSwitcher").font(.caption)
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.yellow)
+                Text("ISS core not initialized — grant Accessibility").font(.caption)
+                Button("Retry") {
+                    initialized = state.core.ensureInitialized()
+                }.controlSize(.small)
             }
         }
     }
@@ -1792,15 +1893,17 @@ struct AboutTab: View {
     private var version: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev"
     }
+
+    private func openLicense() {
+        guard let url = Bundle.main.url(forResource: "LICENSE", withExtension: nil) else { return }
+        NSWorkspace.shared.open(url)
+    }
 }
 ```
 
 - [ ] **Step 2: Wire into `SettingsWindow`**
 
-Replace the About placeholder:
-```swift
-AboutTab().tabItem { Label("About", systemImage: "info.circle") }
-```
+Replace the About tab text with `AboutTab()`.
 
 - [ ] **Step 3: Build**
 
@@ -1813,17 +1916,17 @@ Expected: build succeeds.
 
 ```bash
 git add InstantSwitcher/Settings/AboutTab.swift InstantSwitcher/Settings/SettingsWindow.swift
-git commit -m "Add About tab with ISS detection badge"
+git commit -m "Add About tab with ISS status, credit, and upstream license"
 ```
 
 ---
 
-## Task 14: Menu-bar dropdown — status, clickable bindings, overrides, settings
+## Task 14: Menu-bar dropdown polish
 
 **Files:**
 - Modify: `InstantSwitcher/App/MenuBarView.swift`
 
-- [ ] **Step 1: Rewrite `MenuBarView.swift`**
+- [ ] **Step 1: Rewrite**
 
 ```swift
 import KeyboardShortcuts
@@ -1833,14 +1936,14 @@ struct MenuBarView: View {
     @EnvironmentObject var state: AppState
 
     var body: some View {
-        if !state.runner.isAvailable {
-            Text("⚠︎ ISSCli not found").foregroundStyle(.red)
-            Link("Install InstantSpaceSwitcher", destination: URL(string: "https://interversehq.com/instantspaceswitcher")!)
+        if !state.core.isInitialized {
+            Text("⚠︎ Grant Accessibility for instant switches").foregroundStyle(.yellow)
+            Button("Open Accessibility Settings") { Permissions.openAccessibilitySettings() }
             Divider()
         }
 
-        if let idx = state.locator.currentSpaceIndex() {
-            Text("Current space: \(idx)").foregroundStyle(.secondary)
+        if let info = state.core.currentSpaceInfo() {
+            Text("Space \(info.currentIndex) of \(info.spaceCount)").foregroundStyle(.secondary)
             Divider()
         }
 
@@ -1878,7 +1981,7 @@ struct MenuBarView: View {
 }
 ```
 
-Note: `SettingsLink` is macOS 14+. If deployment needs macOS 13, replace with:
+Note: `SettingsLink` requires macOS 14+. If deployment needs macOS 13, replace with:
 ```swift
 Button("Settings…") {
     NSApp.activate(ignoringOtherApps: true)
@@ -1897,33 +2000,34 @@ Expected: build succeeds.
 
 ```bash
 git add InstantSwitcher/App/MenuBarView.swift
-git commit -m "Flesh out menu-bar dropdown with bindings, overrides, and ISS status"
+git commit -m "Flesh out menu-bar dropdown with bindings, space info, and overrides"
 ```
 
 ---
 
-## Task 15: End-to-end manual smoke test + README
+## Task 15: README + `docs/testing.md`
 
 **Files:**
 - Create: `README.md`
 - Create: `docs/testing.md`
 
-- [ ] **Step 1: Write `docs/testing.md` smoke checklist**
+- [ ] **Step 1: Write `docs/testing.md`**
 
 ```markdown
 # Manual smoke test
 
-Run after build. Requires `InstantSpaceSwitcher.app` installed at `/Applications`.
+Run after build.
 
 1. **Launch** — `open build/Build/Products/Debug/InstantSwitcher.app`. Menu-bar icon appears, no Dock icon.
-2. **App shortcut** — Settings → Shortcuts → Add app shortcut → pick an app on a different space → assign a hotkey. Press the hotkey: space switches instantly, app comes to front.
-3. **Space shortcut** — Add space shortcut → index 2, label "Two" → assign a hotkey. Press the hotkey: space 2 focused, no app focus.
-4. **Override arrows** — Settings → System → enable "Override Ctrl + ← / →". Grant Accessibility when prompted. Disable native Mission Control arrow shortcuts in System Settings. Ctrl+← and Ctrl+→ now switch instantly.
-5. **Override digits** — Enable "Override Ctrl + 1 … 9". Ctrl+1, Ctrl+2 jump without animation.
-6. **Launch at login** — Toggle on, reboot, confirm app auto-launches.
-7. **ISS missing** — Temporarily rename `/Applications/InstantSpaceSwitcher.app`. Menu-bar shows warning; bindings no-op. Rename back.
-8. **Deleted bound app** — Delete an app you've bound. Its row should still be listed; hotkey no-ops.
-9. **Persistence** — Quit and relaunch. Bindings, hotkeys, and toggles survive.
+2. **Grant Accessibility** — macOS prompts on first launch (or on first hotkey fire). Menu bar status line should flip from "Grant Accessibility" to "Space N of M".
+3. **App shortcut** — Settings → Shortcuts → Add app shortcut → pick an app that lives on a different space → assign a hotkey. Press it: space jumps instantly, app focuses.
+4. **Space shortcut** — Add space shortcut → index 2, label "Two" → assign a hotkey. Press it: jumps to space 2, no app focus.
+5. **Override arrows** — System tab → "Override Ctrl + ← / →". Grant Accessibility if re-prompted. Disable the native Mission Control arrows in System Settings. Ctrl+← and Ctrl+→ switch without animation.
+6. **Override digits** — "Override Ctrl + 1 … 9". Ctrl+1, Ctrl+2 jump instantly.
+7. **Launch at login** — Toggle on, reboot, confirm auto-launch.
+8. **Accessibility denied** — Remove InstantSwitcher from Accessibility. Hotkeys still don't crash; About tab says "not initialized"; "Retry" succeeds after re-granting.
+9. **Deleted bound app** — Delete an app you bound. Row stays visible; hotkey no-ops.
+10. **Persistence** — Quit and relaunch. Bindings, hotkeys, and toggles survive.
 ```
 
 - [ ] **Step 2: Write `README.md`**
@@ -1931,16 +2035,18 @@ Run after build. Requires `InstantSpaceSwitcher.app` installed at `/Applications
 ```markdown
 # InstantSwitcher
 
-A menu-bar wrapper around [InstantSpaceSwitcher](https://interversehq.com/instantspaceswitcher) that lets you:
+A macOS menu-bar app for instant space switching and per-app space-focus hotkeys. Self-contained — no external dependencies.
 
-- Bind a global hotkey to **focus a specific app** on the space it's currently on — no sliding animation.
-- Bind a global hotkey to **jump to a specific space**.
-- Optionally **override macOS's native** Ctrl+Arrows / Ctrl+1..9 space shortcuts so they become instant.
+- **Focus an app** on whatever space it's on, instantly, via a global hotkey.
+- **Jump to a specific space** via a global hotkey.
+- Optionally **override macOS's native** Ctrl+Arrows and Ctrl+1..9 so they become instant.
+
+Built on the MIT-licensed [InstantSpaceSwitcher](https://github.com/jurplel/InstantSpaceSwitcher) core (vendored under `Vendor/`).
 
 ## Requirements
 
 - macOS 13+
-- [InstantSpaceSwitcher.app](https://interversehq.com/instantspaceswitcher) installed at `/Applications/InstantSpaceSwitcher.app`
+- Accessibility permission (prompted on first launch)
 - [xcodegen](https://github.com/yonaskolb/XcodeGen) for dev: `brew install xcodegen`
 
 ## Build
@@ -1951,54 +2057,134 @@ xcodebuild -scheme InstantSwitcher -configuration Debug -derivedDataPath build b
 open build/Build/Products/Debug/InstantSwitcher.app
 ```
 
+## Package
+
+```bash
+./scripts/build-dmg.sh
+```
+
+Produces `build/InstantSwitcher.dmg`.
+
 ## Permissions
 
-- **Accessibility** (for system overrides only) — prompted on first enable.
+- **Accessibility** — required for gesture synthesis and for overriding native shortcuts.
 - No Screen Recording or Input Monitoring needed.
 
 ## Development
 
-- Models: `InstantSwitcher/Models`
-- Services: `InstantSwitcher/Services` (`SpaceLocator`, `ISSRunner`, `ConfigStore`, …)
-- Engine: `InstantSwitcher/Engine` (`ShortcutEngine`, `SystemOverride`)
-- UI: `InstantSwitcher/App` + `InstantSwitcher/Settings`
-- Tests: `InstantSwitcherTests`
+- Vendored core: `Vendor/InstantSpaceSwitcher/`
+- Models: `InstantSwitcher/Models/`
+- Services: `InstantSwitcher/Services/` (`ISSCore`, `SpaceLocator`, `ConfigStore`, …)
+- Engine: `InstantSwitcher/Engine/` (`ShortcutEngine`, `SystemOverride`)
+- UI: `InstantSwitcher/App/` + `InstantSwitcher/Settings/`
+- Tests: `InstantSwitcherTests/`
 
-Run tests: `xcodebuild -scheme InstantSwitcher test -derivedDataPath build`
+Run tests:
+```bash
+xcodebuild -scheme InstantSwitcher test -derivedDataPath build
+```
 
 Manual smoke test: `docs/testing.md`.
 
 ## Design
 
 See `docs/superpowers/specs/2026-04-13-instant-switcher-wrapper-design.md`.
+
+## License
+
+- Our code: MIT (see `LICENSE`).
+- Vendored ISS core: MIT by jurplel (see `Vendor/InstantSpaceSwitcher/LICENSE`). Bundled verbatim inside the `.app`.
 ```
 
-- [ ] **Step 3: Run all tests one more time**
+- [ ] **Step 3: Write project root `LICENSE`**
+
+Copy-paste an MIT LICENSE template with current year and your name.
+
+- [ ] **Step 4: Final test pass**
 
 ```bash
 xcodebuild -scheme InstantSwitcher test -derivedDataPath build 2>&1 | tail -10
 ```
 Expected: `TEST SUCCEEDED`.
 
+- [ ] **Step 5: Commit**
+
+```bash
+git add README.md docs/testing.md LICENSE
+git commit -m "Add README, manual testing checklist, and project LICENSE"
+```
+
+---
+
+## Task 16: `build-dmg.sh` packaging script
+
+**Files:**
+- Create: `scripts/build-dmg.sh`
+
+- [ ] **Step 1: Write the script**
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCHEME="InstantSwitcher"
+CONFIG="Release"
+DERIVED="build"
+DMG_DIR="build/dmg"
+DMG_PATH="build/InstantSwitcher.dmg"
+
+rm -rf "$DERIVED" "$DMG_DIR" "$DMG_PATH"
+mkdir -p "$DMG_DIR"
+
+if ! command -v xcodegen >/dev/null; then
+    echo "xcodegen not installed; run: brew install xcodegen" >&2
+    exit 1
+fi
+
+xcodegen generate
+xcodebuild -scheme "$SCHEME" -configuration "$CONFIG" -derivedDataPath "$DERIVED" build
+
+APP_PATH="$DERIVED/Build/Products/$CONFIG/$SCHEME.app"
+cp -R "$APP_PATH" "$DMG_DIR/"
+ln -s /Applications "$DMG_DIR/Applications"
+
+hdiutil create -volname "InstantSwitcher" -srcfolder "$DMG_DIR" -ov -format UDZO "$DMG_PATH"
+
+echo "Built: $DMG_PATH"
+```
+
+- [ ] **Step 2: Make executable**
+
+```bash
+chmod +x scripts/build-dmg.sh
+```
+
+- [ ] **Step 3: Run it once to verify**
+
+```bash
+./scripts/build-dmg.sh
+ls -la build/InstantSwitcher.dmg
+```
+Expected: `InstantSwitcher.dmg` exists (size > 0).
+
 - [ ] **Step 4: Commit**
 
 ```bash
-git add README.md docs/testing.md
-git commit -m "Add README and manual smoke-test checklist"
+git add scripts/build-dmg.sh
+git commit -m "Add build-dmg.sh packaging script"
 ```
 
 ---
 
 ## Acceptance verification
 
-After the final commit, confirm each acceptance criterion from the spec:
+After Task 16, confirm each acceptance criterion from the spec:
 
-1. Menu-bar icon present, no Dock icon. (Task 1, 14)
-2. App shortcut focuses app on its space without animation. (Task 5, 6, 9, 14)
-3. Space shortcut jumps to index N. (Task 6, 9)
-4. Ctrl+Arrow override. (Task 10, 11)
-5. Ctrl+Digit override. (Task 10, 11)
-6. ISS missing → red state + no-op. (Task 4, 13, 14)
-7. Config persistence. (Task 3, 8)
-
-If any criterion is unverified after the smoke test, file it as a follow-up task rather than retroactively editing this plan.
+1. Menu-bar icon present, no Dock icon. (Tasks 1, 8, 14)
+2. App shortcut focuses app on its space without animation. (Tasks 4, 5, 6, 9, 14)
+3. Space shortcut jumps to index N. (Tasks 4, 6, 9)
+4. Ctrl+Arrow override. (Tasks 10, 11)
+5. Ctrl+Digit override. (Tasks 10, 11)
+6. Accessibility-denied degrades gracefully + Retry works. (Tasks 4, 13, 14)
+7. Config persistence. (Tasks 3, 8)
+8. `./scripts/build-dmg.sh` produces a single `.dmg` with ISS `LICENSE` embedded. (Tasks 1, 16)
