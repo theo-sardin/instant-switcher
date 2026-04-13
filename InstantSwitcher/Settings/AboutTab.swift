@@ -2,7 +2,6 @@ import SwiftUI
 
 struct AboutTab: View {
     @EnvironmentObject var state: AppState
-    @State private var initialized: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -27,20 +26,18 @@ struct AboutTab: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(4)
-        .onAppear { initialized = state.core.isInitialized }
+        .onAppear { state.refreshPermissions() }
     }
 
     private var coreStatusRow: some View {
         HStack(spacing: 8) {
-            if initialized {
+            if state.coreInitialized {
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
                 Text("ISS core initialized").font(.caption)
             } else {
-                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.yellow)
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
                 Text("ISS core not initialized — grant Accessibility").font(.caption)
-                Button("Retry") {
-                    initialized = state.core.ensureInitialized()
-                }.controlSize(.small)
+                Button("Retry") { state.refreshPermissions() }.controlSize(.small)
             }
         }
     }

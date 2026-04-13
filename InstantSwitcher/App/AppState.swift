@@ -5,6 +5,7 @@ import SwiftUI
 @MainActor
 final class AppState: ObservableObject {
     @Published var config: Config
+    @Published var coreInitialized: Bool
     let engine: ShortcutEngine
     let core: ISSInvoking
     let locator: SpaceLocating
@@ -21,7 +22,19 @@ final class AppState: ObservableObject {
         self.engine = ShortcutEngine(locator: locator, core: core, activator: activator)
         self.systemOverride = SystemOverride(engine: engine)
         self.config = store.load()
+        self.coreInitialized = core.isInitialized
         registerAllBindings()
+        applyOverrideState()
+    }
+
+    /// Ask macOS to prompt for Accessibility (identifying THIS binary to TCC),
+    /// then retry `iss_init()` and reinstall the override event tap.
+    func refreshPermissions() {
+        // Triggers the native system prompt if the app isn't already trusted —
+        // this is the only reliable way to register the running binary's
+        // identity with TCC.
+        _ = Permissions.isAccessibilityTrusted(prompt: true)
+        coreInitialized = core.ensureInitialized()
         applyOverrideState()
     }
 

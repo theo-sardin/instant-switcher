@@ -3,21 +3,24 @@ import SwiftUI
 
 struct MenuBarView: View {
     @EnvironmentObject var state: AppState
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
-        if !state.core.isInitialized {
-            Text("⚠︎ Grant Accessibility for instant switches").foregroundStyle(.yellow)
-            Button("Open Accessibility Settings") { Permissions.openAccessibilitySettings() }
-            Divider()
-        }
+        let axOK = Permissions.isAccessibilityTrusted()
+        Button("AX: \(axOK ? "✓" : "✗")   ISS: \(state.coreInitialized ? "✓" : "✗")") {}
+            .disabled(true)
 
-        if let info = state.core.currentSpaceInfo() {
-            Text("Space \(info.currentIndex) of \(info.spaceCount)").foregroundStyle(.secondary)
+        if !state.coreInitialized {
+            Button("Grant Accessibility…") { state.refreshPermissions() }
+            Button("Open System Settings") { Permissions.openAccessibilitySettings() }
+            Divider()
+        } else if let info = state.core.currentSpaceInfo() {
+            Button("Space \(info.currentIndex) of \(info.spaceCount)") {}.disabled(true)
             Divider()
         }
 
         if state.config.bindings.isEmpty {
-            Text("No shortcuts configured").foregroundStyle(.secondary)
+            Button("No shortcuts configured") {}.disabled(true)
         } else {
             ForEach(state.config.bindings, id: \.id) { binding in
                 Button(label(for: binding)) { state.engine.fire(binding) }
@@ -37,12 +40,9 @@ struct MenuBarView: View {
 
         Divider()
 
-        // DEVIATION from plan: Plan uses `SettingsLink` which requires macOS 14+.
-        // Deployment target is macOS 13, so we use the NSApp.sendAction fallback
-        // shown in the plan note instead.
         Button("Settings…") {
             NSApp.activate(ignoringOtherApps: true)
-            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            openSettings()
         }.keyboardShortcut(",")
         Button("Quit InstantSwitcher") { NSApp.terminate(nil) }.keyboardShortcut("q")
     }
