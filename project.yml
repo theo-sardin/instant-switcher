@@ -1,0 +1,58 @@
+name: InstantSwitcher
+options:
+  deploymentTarget:
+    macOS: "13.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MACOSX_DEPLOYMENT_TARGET: "13.0"
+    PRODUCT_BUNDLE_IDENTIFIER: com.theosardin.instantswitcher
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGN_STYLE: Automatic
+    CODE_SIGN_IDENTITY: "-"
+    CLANG_ENABLE_MODULES: YES
+packages:
+  KeyboardShortcuts:
+    url: https://github.com/sindresorhus/KeyboardShortcuts
+    from: "2.2.0"
+targets:
+  InstantSwitcher:
+    type: application
+    platform: macOS
+    sources:
+      - path: InstantSwitcher
+      - path: Vendor/InstantSpaceSwitcher/Sources/ISS
+    resources:
+      - path: InstantSwitcher/Resources/Assets.xcassets
+      - path: Vendor/InstantSpaceSwitcher/LICENSE
+    info:
+      path: InstantSwitcher/Resources/Info.plist
+      properties:
+        LSUIElement: true
+        CFBundleDisplayName: InstantSwitcher
+        NSHumanReadableCopyright: "© 2026. Includes InstantSpaceSwitcher (MIT) by jurplel."
+    entitlements:
+      path: InstantSwitcher/Resources/InstantSwitcher.entitlements
+      properties:
+        com.apple.security.app-sandbox: false
+    settings:
+      base:
+        SWIFT_OBJC_BRIDGING_HEADER: InstantSwitcher/Bridging/InstantSwitcher-Bridging-Header.h
+        HEADER_SEARCH_PATHS:
+          - $(SRCROOT)/Vendor/InstantSpaceSwitcher/Sources/ISS/include
+        OTHER_LDFLAGS:
+          - -framework
+          - ApplicationServices
+          - -framework
+          - IOKit
+    dependencies:
+      - package: KeyboardShortcuts
+  InstantSwitcherTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: InstantSwitcherTests
+    dependencies:
+      - target: InstantSwitcher
