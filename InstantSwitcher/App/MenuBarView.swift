@@ -9,9 +9,6 @@ struct MenuBarView: View {
         if !state.coreInitialized {
             Button("Grant Accessibility…") { state.requestAccessibility() }
             Divider()
-        } else if let info = state.core.currentSpaceInfo() {
-            Button("Space \(info.currentIndex) of \(info.spaceCount)") {}.disabled(true)
-            Divider()
         }
 
         if state.config.bindings.isEmpty {
