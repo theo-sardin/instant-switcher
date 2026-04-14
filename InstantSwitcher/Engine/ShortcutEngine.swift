@@ -69,16 +69,22 @@ final class ShortcutEngine {
         }
     }
 
-    private func fireApp(_ binding: AppBinding) {
-        if activator.isRunning(bundleID: binding.bundleIdentifier) {
-            if let idx = locator.spaceIndex(forBundleID: binding.bundleIdentifier) {
+    /// Jump to the app's space (if found) and activate it, or launch if not running.
+    func fireApp(bundleID: String) {
+        if activator.isRunning(bundleID: bundleID) {
+            if let idx = locator.spaceIndex(forBundleID: bundleID) {
+                core.noteExternalSpaceChange()
                 core.index(idx)
             } else {
-                log.notice("No space found for \(binding.bundleIdentifier, privacy: .public); activating directly")
+                log.notice("No space found for \(bundleID, privacy: .public); activating directly")
             }
-            activator.activate(bundleID: binding.bundleIdentifier)
+            activator.activate(bundleID: bundleID)
         } else {
-            activator.launch(bundleID: binding.bundleIdentifier)
+            activator.launch(bundleID: bundleID)
         }
+    }
+
+    private func fireApp(_ binding: AppBinding) {
+        fireApp(bundleID: binding.bundleIdentifier)
     }
 }
