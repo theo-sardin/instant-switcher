@@ -13,6 +13,7 @@ final class AppState: ObservableObject {
     let systemOverride: SystemOverride
     private let store: ConfigStore
     private var spaceChangeObserver: NSObjectProtocol?
+    private var axWatchdog: Timer?
 
     init(store: ConfigStore = ConfigStore(),
          core: ISSInvoking = ISSCore.shared,
@@ -28,9 +29,11 @@ final class AppState: ObservableObject {
         registerAllBindings()
         applyOverrideState()
         observeSpaceChanges()
+        startAccessibilityWatchdog()
     }
 
     deinit {
+        axWatchdog?.invalidate()
         if let spaceChangeObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(spaceChangeObserver)
         }
@@ -55,6 +58,26 @@ final class AppState: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.core.noteExternalSpaceChange() }
+        }
+    }
+
+    // MARK: - Accessibility watchdog
+
+    /// Polls Accessibility status every 2s. If AX is revoked while event taps
+    /// are live, tears down both the ISS C core tap and SystemOverride tap
+    /// immediately — preventing the "frozen Mac" bug where active filter taps
+    /// silently swallow all input after permission loss.
+    private func startAccessibilityWatchdog() {
+        axWatchdog = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.coreInitialized else { return }
+                if !Permissions.isAccessibilityTrusted() {
+                    self.core.destroy()
+                    self.systemOverride.arrowsEnabled = false
+                    self.systemOverride.digitsEnabled = false
+                    self.coreInitialized = false
+                }
+            }
         }
     }
 

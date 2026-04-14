@@ -24,4 +24,6 @@ final class FakeISSCore: ISSInvoking {
     func setSwipeOverride(_ on: Bool) { swipeOverride = on }
     private(set) var externalSpaceChangeCount = 0
     func noteExternalSpaceChange() { externalSpaceChangeCount += 1 }
+    private(set) var destroyCount = 0
+    func destroy() { destroyCount += 1; isInitialized = false }
 }

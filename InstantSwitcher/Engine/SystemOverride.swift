@@ -112,7 +112,11 @@ final class SystemOverride {
         guard let userInfo else { return Unmanaged.passUnretained(event) }
         let me = Unmanaged<SystemOverride>.fromOpaque(userInfo).takeUnretainedValue()
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            if let tap = me.tap { CGEvent.tapEnable(tap: tap, enable: true) }
+            if Permissions.isAccessibilityTrusted() {
+                if let tap = me.tap { CGEvent.tapEnable(tap: tap, enable: true) }
+            } else {
+                me.teardown()
+            }
             return Unmanaged.passUnretained(event)
         }
         return MainActor.assumeIsolated {
