@@ -6,10 +6,6 @@ struct MenuBarView: View {
     @Environment(\.openSettings) private var openSettings
 
     var body: some View {
-        let axOK = Permissions.isAccessibilityTrusted()
-        Button("AX: \(axOK ? "✓" : "✗")   ISS: \(state.coreInitialized ? "✓" : "✗")") {}
-            .disabled(true)
-
         if !state.coreInitialized {
             Button("Grant Accessibility…") { state.refreshPermissions() }
             Button("Open System Settings") { Permissions.openAccessibilitySettings() }
@@ -23,7 +19,7 @@ struct MenuBarView: View {
             Button("No shortcuts configured") {}.disabled(true)
         } else {
             ForEach(state.config.bindings, id: \.id) { binding in
-                Button(labelWithDiag(for: binding)) { state.engine.fire(binding) }
+                Button(label(for: binding)) { state.engine.fire(binding) }
             }
         }
 
@@ -51,16 +47,6 @@ struct MenuBarView: View {
         switch binding {
         case .app(let b): return b.displayName
         case .space(let b): return b.label.isEmpty ? "Space \(b.spaceIndex)" : b.label
-        }
-    }
-
-    private func labelWithDiag(for binding: Binding) -> String {
-        switch binding {
-        case .app(let b):
-            let diag = state.locator.diagnose(forBundleID: b.bundleIdentifier)
-            return "\(b.displayName)   [\(diag)]"
-        case .space(let b):
-            return b.label.isEmpty ? "Space \(b.spaceIndex)" : b.label
         }
     }
 }

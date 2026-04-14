@@ -4,13 +4,6 @@ import os
 protocol SpaceLocating {
     func currentSpaceIndex() -> Int?
     func spaceIndex(forBundleID bundleID: String) -> Int?
-    /// Returns a short breadcrumb describing what happened during the lookup,
-    /// used for UI diagnostics. Non-protocol-required-by-tests, default no-op.
-    func diagnose(forBundleID bundleID: String) -> String
-}
-
-extension SpaceLocating {
-    func diagnose(forBundleID bundleID: String) -> String { "" }
 }
 
 // Private CGS symbols. Undocumented; may change across macOS versions.
@@ -26,16 +19,6 @@ private func CGSCopySpacesForWindows(_ connection: Int32, _ mask: Int32, _ windo
 
 @_silgen_name("CGSGetActiveSpace")
 private func CGSGetActiveSpace(_ connection: Int32) -> UInt64
-
-@_silgen_name("CGSCopyWindowsWithOptionsAndTags")
-private func CGSCopyWindowsWithOptionsAndTags(
-    _ cid: Int32,
-    _ owner: UInt32,
-    _ spaces: CFArray,
-    _ options: Int32,
-    _ setTags: UnsafeMutablePointer<UInt64>,
-    _ clearTags: UnsafeMutablePointer<UInt64>
-) -> CFArray?
 
 final class SpaceLocator: SpaceLocating {
     private let log = Logger(subsystem: "com.theosardin.instantswitcher", category: "cgs")
@@ -101,35 +84,8 @@ final class SpaceLocator: SpaceLocating {
         return singleOnCurrent ?? fallback ?? activeIdx
     }
 
-    func diagnose(forBundleID bundleID: String) -> String {
-        guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first else {
-            return "not-running"
-        }
-        if let idx = spaceIndex(forPID: app.processIdentifier) { return "space \(idx)" }
-        return "no space found"
-    }
 
     // MARK: - Private
-
-    private func frontWindowID(for pid: pid_t) -> UInt32? {
-        // NOTE: must NOT use .optionOnScreenOnly — windows on *other* spaces
-        // aren't "on screen" and would be filtered out, defeating the whole
-        // point of this lookup.
-        let options: CGWindowListOption = [.excludeDesktopElements]
-        guard let list = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else {
-            return nil
-        }
-        for info in list {
-            guard let ownerPID = info[kCGWindowOwnerPID as String] as? pid_t,
-                  ownerPID == pid,
-                  let id = info[kCGWindowNumber as String] as? UInt32,
-                  let layer = info[kCGWindowLayer as String] as? Int,
-                  layer == 0
-            else { continue }
-            return id
-        }
-        return nil
-    }
 
     private func spaceIndex(for spaceID: UInt64) -> Int? {
         let conn = CGSMainConnectionID()
