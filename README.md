@@ -1,29 +1,33 @@
 # instant-switcher
 
-macOS menu bar app for fast space switching. Bind a hotkey to an app and it jumps to whatever space that app is on, focuses it, no sliding animation. Bind a hotkey to a space number and it just goes there.
+macOS menu bar app for instant space switching. No sliding animation, ever.
 
-Optionally hijacks `Ctrl+←/→` and `Ctrl+1..9` so those are instant too.
+- **App hotkeys** — bind a key combo to an app, press it, instantly jump to that app's space and focus it.
+- **Space hotkeys** — bind a key combo to a space number, press it, go there.
+- **Override Ctrl+Arrows / Ctrl+1..9** — replace macOS's animated space switch with instant ones.
+- **Swipe override** — make trackpad swipes between spaces instant too.
+- **Import from Apptivate** — migrating? One-click import of your existing shortcuts.
 
-Built on top of [InstantSpaceSwitcher](https://github.com/jurplel/InstantSpaceSwitcher) (MIT). Their C core is vendored under `Vendor/` so this ships as a single `.app`.
+Built on [InstantSpaceSwitcher](https://github.com/jurplel/InstantSpaceSwitcher) (MIT, vendored).
 
-## Build
+## Install
 
-Needs Xcode and xcodegen:
+Grab the `.dmg` from the [latest release](https://github.com/theo-sardin/instant-switcher/releases), drag to Applications, open, grant Accessibility when prompted.
+
+## Build from source
 
     brew install xcodegen
     xcodegen generate
-    xcodebuild -scheme InstantSwitcher -configuration Debug -derivedDataPath build build
-    open build/Build/Products/Debug/InstantSwitcher.app
+    xcodebuild -scheme InstantSwitcher -configuration Release -derivedDataPath build build
+    open build/Build/Products/Release/InstantSwitcher.app
 
 ## Package a DMG
 
     ./scripts/build-dmg.sh
 
-Output lands at `build/InstantSwitcher.dmg`.
-
 ## Permissions
 
-Grant Accessibility on first launch (System Settings → Privacy & Security → Accessibility). That's the only one.
+Accessibility only. No Screen Recording, no Input Monitoring.
 
 ## Tests
 
@@ -31,4 +35,4 @@ Grant Accessibility on first launch (System Settings → Privacy & Security → 
 
 ## Credits
 
-Powered by jurplel/InstantSpaceSwitcher, MIT. See `Vendor/InstantSpaceSwitcher/LICENSE`.
+Powered by [jurplel/InstantSpaceSwitcher](https://github.com/jurplel/InstantSpaceSwitcher) (MIT).
