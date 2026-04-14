@@ -6,8 +6,9 @@ struct MenuBarView: View {
     @Environment(\.openSettings) private var openSettings
 
     var body: some View {
+        let _ = state.refreshPermissions() // re-check AX each time menu opens
         if !state.coreInitialized {
-            Button("Grant Accessibility…") { state.refreshPermissions() }
+            Button("Grant Accessibility…") { state.requestAccessibility() }
             Button("Open System Settings") { Permissions.openAccessibilitySettings() }
             Divider()
         } else if let info = state.core.currentSpaceInfo() {

@@ -37,7 +37,7 @@ struct AboutTab: View {
             } else {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
                 Text("ISS core not initialized — grant Accessibility").font(.caption)
-                Button("Retry") { state.refreshPermissions() }.controlSize(.small)
+                Button("Retry") { state.requestAccessibility() }.controlSize(.small)
             }
         }
     }
