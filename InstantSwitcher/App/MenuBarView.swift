@@ -33,6 +33,10 @@ struct MenuBarView: View {
             get: { state.config.systemOverrides.digits },
             set: { state.setOverride(digits: $0) }
         ))
+        Toggle("Option + Tab Switcher", isOn: SwiftUI.Binding(
+            get: { state.config.systemOverrides.altTab },
+            set: { state.setOverride(altTab: $0) }
+        ))
 
         Divider()
 

@@ -11,6 +11,7 @@ final class AppState: ObservableObject {
     let core: ISSInvoking
     let locator: SpaceLocating
     let systemOverride: SystemOverride
+    let windowSwitcher: WindowSwitcher
     private let store: ConfigStore
     private var spaceChangeObserver: NSObjectProtocol?
     private var axWatchdog: Timer?
@@ -24,6 +25,8 @@ final class AppState: ObservableObject {
         self.locator = locator
         self.engine = ShortcutEngine(locator: locator, core: core, activator: activator)
         self.systemOverride = SystemOverride(engine: engine)
+        self.windowSwitcher = WindowSwitcher(engine: engine)
+        self.systemOverride.setWindowSwitcher(windowSwitcher)
         self.config = store.load()
         self.coreInitialized = core.isInitialized
         registerAllBindings()
@@ -75,6 +78,7 @@ final class AppState: ObservableObject {
                     self.core.destroy()
                     self.systemOverride.arrowsEnabled = false
                     self.systemOverride.digitsEnabled = false
+                    self.systemOverride.altTabEnabled = false
                     self.coreInitialized = false
                 }
             }
@@ -201,9 +205,16 @@ final class AppState: ObservableObject {
         applyOverrideState()
     }
 
+    func setOverride(altTab: Bool) {
+        config.systemOverrides.altTab = altTab
+        persist()
+        applyOverrideState()
+    }
+
     private func applyOverrideState() {
         systemOverride.arrowsEnabled = config.systemOverrides.arrows
         systemOverride.digitsEnabled = config.systemOverrides.digits
+        systemOverride.altTabEnabled = coreInitialized && config.systemOverrides.altTab
         core.setSwipeOverride(config.systemOverrides.swipe)
     }
 
