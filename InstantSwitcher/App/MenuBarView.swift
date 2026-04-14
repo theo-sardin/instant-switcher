@@ -20,6 +20,7 @@ struct MenuBarView: View {
         } else {
             ForEach(state.config.bindings, id: \.id) { binding in
                 Button(label(for: binding)) { state.engine.fire(binding) }
+                    .globalKeyboardShortcut(.binding(binding.id))
             }
         }
 
