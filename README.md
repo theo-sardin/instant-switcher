@@ -13,6 +13,7 @@ Built on [InstantSpaceSwitcher](https://github.com/jurplel/InstantSpaceSwitcher)
 ## Install
 
 Grab the `.dmg` from the [latest release](https://github.com/theo-sardin/instant-switcher/releases), drag to Applications, open, grant Accessibility when prompted.
+If after granting the permissions it doesn't immediately work, try restarting and on/off toggling the settings you need.
 
 ## Build from source
 
