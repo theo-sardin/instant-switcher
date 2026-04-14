@@ -15,26 +15,17 @@ struct SystemTab: View {
                     get: { state.config.systemOverrides.digits },
                     set: { enable($0, kind: .digits) }
                 ))
-                Toggle("Make all space switches instant (trackpad, Cmd+Tab)", isOn: SwiftUI.Binding(
+                Toggle("Instant trackpad swipes between spaces", isOn: SwiftUI.Binding(
                     get: { state.config.systemOverrides.swipe },
                     set: { enable($0, kind: .swipe) }
                 ))
 
-                if (state.config.systemOverrides.arrows || state.config.systemOverrides.digits) && !accessibilityTrusted {
+                if !accessibilityTrusted {
                     banner(
                         title: "Accessibility permission required",
                         message: "Grant InstantSwitcher access in System Settings › Privacy & Security › Accessibility.",
                         buttonLabel: "Open Accessibility Settings",
                         action: { Permissions.openAccessibilitySettings() }
-                    )
-                }
-
-                if state.config.systemOverrides.arrows || state.config.systemOverrides.digits {
-                    banner(
-                        title: "Disable the native shortcut",
-                        message: "Otherwise macOS still processes it in parallel. Open Keyboard Shortcuts and turn off Mission Control's space shortcuts.",
-                        buttonLabel: "Open Keyboard Shortcuts",
-                        action: { Permissions.openKeyboardShortcutsSettings() }
                     )
                 }
             }

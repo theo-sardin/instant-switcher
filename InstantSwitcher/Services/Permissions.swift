@@ -12,8 +12,4 @@ enum Permissions {
         NSWorkspace.shared.open(url)
     }
 
-    static func openKeyboardShortcutsSettings() {
-        let url = URL(string: "x-apple.systempreferences:com.apple.preference.keyboard?Shortcuts")!
-        NSWorkspace.shared.open(url)
-    }
 }
