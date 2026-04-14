@@ -19,6 +19,10 @@ struct SystemTab: View {
                     get: { state.config.systemOverrides.swipe },
                     set: { enable($0, kind: .swipe) }
                 ))
+                Toggle("Option + Tab instant app switcher", isOn: SwiftUI.Binding(
+                    get: { state.config.systemOverrides.altTab },
+                    set: { enable($0, kind: .altTab) }
+                ))
 
                 if !accessibilityTrusted {
                     banner(
@@ -40,7 +44,7 @@ struct SystemTab: View {
         .onAppear { accessibilityTrusted = Permissions.isAccessibilityTrusted() }
     }
 
-    private enum Kind { case arrows, digits, swipe }
+    private enum Kind { case arrows, digits, swipe, altTab }
 
     private func enable(_ on: Bool, kind: Kind) {
         if on {
@@ -51,6 +55,7 @@ struct SystemTab: View {
         case .arrows: state.setOverride(arrows: on)
         case .digits: state.setOverride(digits: on)
         case .swipe:  state.setOverride(swipe: on)
+        case .altTab: state.setOverride(altTab: on)
         }
     }
 
