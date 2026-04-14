@@ -58,15 +58,17 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Ask macOS to prompt for Accessibility (identifying THIS binary to TCC),
-    /// then retry `iss_init()` and reinstall the override event tap.
+    /// Silent re-check: try to init ISS if not yet done, apply overrides.
+    /// Called on every menu open — no system prompt.
     func refreshPermissions() {
-        // Triggers the native system prompt if the app isn't already trusted —
-        // this is the only reliable way to register the running binary's
-        // identity with TCC.
-        _ = Permissions.isAccessibilityTrusted(prompt: true)
         coreInitialized = core.ensureInitialized()
         applyOverrideState()
+    }
+
+    /// Explicit user action: trigger the macOS Accessibility prompt, then retry.
+    func requestAccessibility() {
+        _ = Permissions.isAccessibilityTrusted(prompt: true)
+        refreshPermissions()
     }
 
     // MARK: - Binding CRUD
