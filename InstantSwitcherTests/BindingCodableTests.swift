@@ -41,7 +41,7 @@ final class BindingCodableTests: XCTestCase {
             bindings: [
                 .space(SpaceBinding(id: UUID(), spaceIndex: 1, label: "One"))
             ],
-            systemOverrides: SystemOverrides(arrows: true, digits: false),
+            systemOverrides: SystemOverrides(arrows: true, digits: false, swipe: false),
             launchAtLogin: true
         )
         let data = try JSONEncoder().encode(cfg)

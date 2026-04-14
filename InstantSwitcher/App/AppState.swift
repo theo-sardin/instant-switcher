@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import KeyboardShortcuts
 import SwiftUI
@@ -11,6 +12,7 @@ final class AppState: ObservableObject {
     let locator: SpaceLocating
     let systemOverride: SystemOverride
     private let store: ConfigStore
+    private var spaceChangeObserver: NSObjectProtocol?
 
     init(store: ConfigStore = ConfigStore(),
          core: ISSInvoking = ISSCore.shared,
@@ -25,6 +27,35 @@ final class AppState: ObservableObject {
         self.coreInitialized = core.isInitialized
         registerAllBindings()
         applyOverrideState()
+        observeSpaceChanges()
+    }
+
+    deinit {
+        if let spaceChangeObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(spaceChangeObserver)
+        }
+    }
+
+    /// Piggyback on macOS app activations (Cmd+Tab, Dock click, etc.): when the
+    /// activated app's frontmost window lives on a different space, pre-fire
+    /// an instant ISS jump so the native animated swipe never starts (or at
+    /// worst is cut short).
+    ///
+    /// Only active while the swipe override is enabled — we treat that toggle
+    /// as "make everything instant".
+    /// Keep ISS's optimistic space index honest when macOS changes space by
+    /// any means ISS didn't fire itself (trackpad gestures we didn't
+    /// intercept, Mission Control, returning to leftmost desktop, etc.).
+    /// Without this, ISS's bounds check can refuse to move after the active
+    /// space drifts out from under it.
+    private func observeSpaceChanges() {
+        spaceChangeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.activeSpaceDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.core.noteExternalSpaceChange() }
+        }
     }
 
     /// Ask macOS to prompt for Accessibility (identifying THIS binary to TCC),
@@ -73,6 +104,37 @@ final class AppState: ObservableObject {
         }
     }
 
+    // MARK: - Import from Apptivate
+
+    /// Bulk-add bindings from Apptivate, skipping any whose bundle ID already
+    /// exists in the current config. Returns the number of bindings added.
+    @discardableResult
+    func importFromApptivate(_ items: [ApptivateImportedItem]) -> Int {
+        let existingIDs = Set(config.bindings.compactMap { b -> String? in
+            if case .app(let a) = b { return a.bundleIdentifier }
+            return nil
+        })
+        var added = 0
+        for item in items where !existingIDs.contains(item.bundleID) {
+            let binding = AppBinding(
+                id: UUID(),
+                bundleIdentifier: item.bundleID,
+                displayName: item.displayName,
+                iconPath: item.iconPath
+            )
+            config.bindings.append(.app(binding))
+            registerBinding(.app(binding))
+            let shortcut = KeyboardShortcuts.Shortcut(
+                carbonKeyCode: item.carbonKeyCode,
+                carbonModifiers: item.carbonModifiers
+            )
+            KeyboardShortcuts.setShortcut(shortcut, for: .binding(binding.id))
+            added += 1
+        }
+        if added > 0 { persist() }
+        return added
+    }
+
     // MARK: - System overrides
 
     func setOverride(arrows: Bool) {
@@ -87,9 +149,16 @@ final class AppState: ObservableObject {
         applyOverrideState()
     }
 
+    func setOverride(swipe: Bool) {
+        config.systemOverrides.swipe = swipe
+        persist()
+        applyOverrideState()
+    }
+
     private func applyOverrideState() {
         systemOverride.arrowsEnabled = config.systemOverrides.arrows
         systemOverride.digitsEnabled = config.systemOverrides.digits
+        core.setSwipeOverride(config.systemOverrides.swipe)
     }
 
     // MARK: - Launch at login

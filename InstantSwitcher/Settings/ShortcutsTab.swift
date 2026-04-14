@@ -6,6 +6,13 @@ struct ShortcutsTab: View {
     @State private var newSpaceIndex: Int = 1
     @State private var newSpaceLabel: String = ""
     @State private var showAddSpaceSheet = false
+    @State private var importAlert: ImportAlert?
+
+    struct ImportAlert: Identifiable {
+        let id = UUID()
+        let title: String
+        let message: String
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -15,6 +22,10 @@ struct ShortcutsTab: View {
                 Menu {
                     Button("Add app shortcut…") { addApp() }
                     Button("Add space shortcut…") { showAddSpaceSheet = true }
+                    if ApptivateImporter.configExists {
+                        Divider()
+                        Button("Import from Apptivate…") { importFromApptivate() }
+                    }
                 } label: {
                     Label("Add", systemImage: "plus")
                 }
@@ -29,6 +40,31 @@ struct ShortcutsTab: View {
         }
         .padding(.horizontal, 4)
         .sheet(isPresented: $showAddSpaceSheet) { addSpaceSheet }
+        .alert(item: $importAlert) { alert in
+            Alert(title: Text(alert.title), message: Text(alert.message), dismissButton: .default(Text("OK")))
+        }
+    }
+
+    private func importFromApptivate() {
+        do {
+            let items = try ApptivateImporter.importAll()
+            let added = state.importFromApptivate(items)
+            let skipped = items.count - added
+            let msg: String
+            if added == 0 {
+                msg = "All \(items.count) Apptivate shortcuts already exist — nothing to add."
+            } else if skipped == 0 {
+                msg = "Imported \(added) shortcut\(added == 1 ? "" : "s") from Apptivate."
+            } else {
+                msg = "Imported \(added); skipped \(skipped) already present."
+            }
+            importAlert = ImportAlert(title: "Apptivate import", message: msg)
+        } catch {
+            importAlert = ImportAlert(
+                title: "Apptivate import failed",
+                message: error.localizedDescription
+            )
+        }
     }
 
     private var emptyState: some View {

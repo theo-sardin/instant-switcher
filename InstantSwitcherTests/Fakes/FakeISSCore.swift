@@ -20,4 +20,8 @@ final class FakeISSCore: ISSInvoking {
     func right() { calls.append(.right) }
     func index(_ oneBased: Int) { calls.append(.index(oneBased)) }
     func currentSpaceInfo() -> ISSSpaceStatus? { info }
+    var swipeOverride: Bool = false
+    func setSwipeOverride(_ on: Bool) { swipeOverride = on }
+    private(set) var externalSpaceChangeCount = 0
+    func noteExternalSpaceChange() { externalSpaceChangeCount += 1 }
 }

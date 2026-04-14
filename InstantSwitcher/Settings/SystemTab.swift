@@ -15,6 +15,10 @@ struct SystemTab: View {
                     get: { state.config.systemOverrides.digits },
                     set: { enable($0, kind: .digits) }
                 ))
+                Toggle("Make all space switches instant (trackpad, Cmd+Tab)", isOn: SwiftUI.Binding(
+                    get: { state.config.systemOverrides.swipe },
+                    set: { enable($0, kind: .swipe) }
+                ))
 
                 if (state.config.systemOverrides.arrows || state.config.systemOverrides.digits) && !accessibilityTrusted {
                     banner(
@@ -45,7 +49,7 @@ struct SystemTab: View {
         .onAppear { accessibilityTrusted = Permissions.isAccessibilityTrusted() }
     }
 
-    private enum Kind { case arrows, digits }
+    private enum Kind { case arrows, digits, swipe }
 
     private func enable(_ on: Bool, kind: Kind) {
         if on {
@@ -55,6 +59,7 @@ struct SystemTab: View {
         switch kind {
         case .arrows: state.setOverride(arrows: on)
         case .digits: state.setOverride(digits: on)
+        case .swipe:  state.setOverride(swipe: on)
         }
     }
 
