@@ -61,7 +61,15 @@ final class AppState: ObservableObject {
     /// Silent re-check: try to init ISS if not yet done, apply overrides.
     /// Called on every menu open — no system prompt.
     func refreshPermissions() {
+        let wasInitialized = coreInitialized
         coreInitialized = core.ensureInitialized()
+        if coreInitialized && !wasInitialized {
+            // First successful init this session — tear down zombie tap
+            // from startup (created before AX was granted) and recreate.
+            // Same code path as user toggling off/on.
+            systemOverride.arrowsEnabled = false
+            systemOverride.digitsEnabled = false
+        }
         applyOverrideState()
     }
 

@@ -1,5 +1,4 @@
 import AppKit
-import SwiftUI
 
 struct PickedApp {
     let bundleID: String
