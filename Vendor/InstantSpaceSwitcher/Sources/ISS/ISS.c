@@ -109,9 +109,12 @@ static CGEventRef eventTapCallback(CGEventTapProxy proxy, CGEventType type,
     (void)proxy;
     (void)refcon;
 
-    // Re-enable if the system disabled our tap for being too slow
+    // Re-enable only if Accessibility is still granted. If AX was revoked,
+    // re-enabling creates a zombie tap that silently eats ALL input events.
     if (type == kCGEventTapDisabledByTimeout || type == kCGEventTapDisabledByUserInput) {
-        if (globalTap) CGEventTapEnable(globalTap, true);
+        if (globalTap && AXIsProcessTrustedWithOptions(NULL)) {
+            CGEventTapEnable(globalTap, true);
+        }
         return event;
     }
 
