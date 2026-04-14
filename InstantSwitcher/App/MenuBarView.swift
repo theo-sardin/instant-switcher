@@ -7,7 +7,7 @@ struct MenuBarView: View {
 
     var body: some View {
         if !state.coreInitialized {
-            Button("Grant Accessibility…") { state.refreshPermissions() }
+            Button("Grant Accessibility…") { state.requestAccessibility() }
             Button("Open System Settings") { Permissions.openAccessibilitySettings() }
             Divider()
         } else if let info = state.core.currentSpaceInfo() {
