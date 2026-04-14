@@ -65,10 +65,23 @@ final class AppState: ObservableObject {
         applyOverrideState()
     }
 
-    /// Explicit user action: trigger the macOS Accessibility prompt, then retry.
+    /// Explicit user action: trigger the macOS Accessibility prompt, then
+    /// poll until the user actually grants it (they have to leave the app,
+    /// toggle the switch in System Settings, and come back).
     func requestAccessibility() {
         _ = Permissions.isAccessibilityTrusted(prompt: true)
-        refreshPermissions()
+        refreshPermissions() // instant retry in case already granted
+        guard !coreInitialized else { return }
+        // Poll every 2s for up to 2 minutes
+        Task { @MainActor in
+            for _ in 0..<60 {
+                try? await Task.sleep(for: .seconds(2))
+                if Permissions.isAccessibilityTrusted() {
+                    refreshPermissions()
+                    if coreInitialized { return }
+                }
+            }
+        }
     }
 
     // MARK: - Binding CRUD
