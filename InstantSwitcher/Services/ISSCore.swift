@@ -28,6 +28,9 @@ protocol ISSInvoking {
     /// CGS data. Must be called whenever `NSWorkspace.activeSpaceDidChange`
     /// fires.
     func noteExternalSpaceChange()
+    /// Tear down the C core and its event tap. Safe to call even if not
+    /// initialized. After this, `ensureInitialized()` can re-create it.
+    func destroy()
 }
 
 final class ISSCore: ISSInvoking {
@@ -42,7 +45,7 @@ final class ISSCore: ISSInvoking {
     }
 
     deinit {
-        if initialized { iss_destroy() }
+        if initialized { destroy() }
     }
 
     var isInitialized: Bool {
@@ -93,6 +96,14 @@ final class ISSCore: ISSInvoking {
     func noteExternalSpaceChange() {
         guard isInitialized else { return }
         iss_on_space_changed()
+    }
+
+    func destroy() {
+        lock.lock(); defer { lock.unlock() }
+        guard initialized else { return }
+        iss_destroy()
+        initialized = false
+        log.info("iss_destroy called — event tap torn down")
     }
 
     func currentSpaceInfo() -> ISSSpaceStatus? {
