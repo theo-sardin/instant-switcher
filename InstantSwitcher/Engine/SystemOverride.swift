@@ -16,8 +16,19 @@ final class SystemOverride {
     private var tap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
 
+    private static let kVK_Tab: Int64 = 48
+    private static let kVK_Escape: Int64 = 53
+    private static let kVK_LeftArrow: Int64 = 123
+    private static let kVK_RightArrow: Int64 = 124
+
     var arrowsEnabled: Bool = false { didSet { reconfigure() } }
     var digitsEnabled: Bool = false { didSet { reconfigure() } }
+    var altTabEnabled: Bool = false { didSet { reconfigure() } }
+    private(set) var windowSwitcher: WindowSwitcher?
+
+    func setWindowSwitcher(_ switcher: WindowSwitcher) {
+        windowSwitcher = switcher
+    }
 
 
     init(engine: ShortcutEngine) {
@@ -27,7 +38,7 @@ final class SystemOverride {
     nonisolated deinit { teardown() }
 
     private func reconfigure() {
-        if arrowsEnabled || digitsEnabled {
+        if arrowsEnabled || digitsEnabled || altTabEnabled {
             ensureTap()
         } else {
             teardown()
@@ -36,7 +47,7 @@ final class SystemOverride {
 
     private func ensureTap() {
         if tap != nil { return }
-        let mask = (1 << CGEventType.keyDown.rawValue)
+        let mask = (1 << CGEventType.keyDown.rawValue) | (1 << CGEventType.flagsChanged.rawValue)
         let opaqueSelf = Unmanaged.passUnretained(self).toOpaque()
         guard let eventTap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
@@ -68,9 +79,39 @@ final class SystemOverride {
     }
 
     fileprivate func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+        let flags = event.flags
+
+        // Option+Tab window switching
+        if type == .keyDown, altTabEnabled, let switcher = windowSwitcher {
+            let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+            if keyCode == Self.kVK_Tab
+                && flags.contains(.maskAlternate)
+                && !flags.contains(.maskCommand)
+                && !flags.contains(.maskControl) {
+                if flags.contains(.maskShift) {
+                    switcher.retreat()
+                } else {
+                    switcher.showOrAdvance()
+                }
+                return nil
+            }
+            // Escape dismisses without switching
+            if keyCode == Self.kVK_Escape && switcher.isShowing {
+                switcher.dismiss()
+                return nil
+            }
+        }
+
+        // Option released while HUD is showing → commit the switch
+        if type == .flagsChanged, let switcher = windowSwitcher,
+           switcher.isShowing, !flags.contains(.maskAlternate) {
+            switcher.commit()
+            return Unmanaged.passUnretained(event)
+        }
+
+        // Ctrl+Arrow/Digit overrides
         guard type == .keyDown else { return Unmanaged.passUnretained(event) }
 
-        let flags = event.flags
         let isControl = flags.contains(.maskControl)
         let others = flags.subtracting([.maskControl])
         let noOtherMods = !others.contains(.maskCommand)
@@ -81,8 +122,8 @@ final class SystemOverride {
 
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
         if arrowsEnabled {
-            if keyCode == 123 { engine.systemOverride(.left);  return nil }
-            if keyCode == 124 { engine.systemOverride(.right); return nil }
+            if keyCode == Self.kVK_LeftArrow { engine.systemOverride(.left);  return nil }
+            if keyCode == Self.kVK_RightArrow { engine.systemOverride(.right); return nil }
         }
         if digitsEnabled {
             if let n = digitIndex(for: keyCode) {
