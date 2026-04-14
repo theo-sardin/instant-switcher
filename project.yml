@@ -10,10 +10,8 @@ settings:
     PRODUCT_BUNDLE_IDENTIFIER: com.theosardin.instantswitcher
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
-    CODE_SIGN_STYLE: Manual
-    CODE_SIGN_IDENTITY: "Apple Development"
-    DEVELOPMENT_TEAM: REDACTED
-    PROVISIONING_PROFILE_SPECIFIER: ""
+    CODE_SIGN_STYLE: Automatic
+    CODE_SIGN_IDENTITY: "-"
     CLANG_ENABLE_MODULES: YES
 packages:
   KeyboardShortcuts:
