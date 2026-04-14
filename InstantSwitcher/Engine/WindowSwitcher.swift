@@ -245,6 +245,16 @@ struct SwitcherHUDView: View {
     let selectedIndex: Int
     var onSelect: ((Int) -> Void)?
 
+    private var iconSize: CGFloat {
+        max(56, 160 - CGFloat(apps.count) * 8)
+    }
+    private var fontSize: CGFloat {
+        max(11, 18 - CGFloat(apps.count) * 0.6)
+    }
+    private var labelWidth: CGFloat {
+        iconSize + 24
+    }
+
     var body: some View {
         HStack(spacing: 8) {
             ForEach(Array(apps.enumerated()), id: \.offset) { index, app in
@@ -252,17 +262,17 @@ struct SwitcherHUDView: View {
                     Image(nsImage: app.icon)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
-                        .frame(width: 56, height: 56)
-                        .padding(6)
+                        .frame(width: iconSize, height: iconSize)
+                        .padding(iconSize * 0.1)
                         .background(
-                            RoundedRectangle(cornerRadius: 10)
+                            RoundedRectangle(cornerRadius: iconSize * 0.15)
                                 .fill(index == selectedIndex ? Color.white.opacity(0.2) : Color.clear)
                         )
                     Text(app.name)
-                        .font(.system(size: 11))
+                        .font(.system(size: fontSize))
                         .foregroundStyle(.white)
                         .lineLimit(1)
-                        .frame(width: 72)
+                        .frame(width: labelWidth)
                 }
                 .onTapGesture { onSelect?(index) }
             }
