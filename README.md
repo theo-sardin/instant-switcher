@@ -6,6 +6,7 @@ macOS menu bar app for instant space switching. No sliding animation, ever. This
 - **Space hotkeys** — bind a key combo to a space number, press it, go there.
 - **Override Ctrl+Arrows / Ctrl+1..9** — replace macOS's animated space switch with instant ones.
 - **Swipe override** — make trackpad swipes between spaces instant too.
+- **Option+Tab app switcher** — a fast app switcher that shows only apps with real windows, in most-recently-used order. Instantly jumps to the selected app's space. Unminimizes windows from the Dock.
 - **Import from Apptivate** — one-click import of your existing Apptivate shortcuts.
 
 Built on [InstantSpaceSwitcher](https://github.com/jurplel/InstantSpaceSwitcher) (MIT, vendored).
