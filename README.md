@@ -1,6 +1,6 @@
 # instant-switcher
 
-macOS menu bar app for instant space switching. No sliding animation, ever.
+macOS menu bar app for instant space switching. No sliding animation, ever. This is REALLY hacky, it basically simulates super fast gestures.
 
 - **App hotkeys** — bind a key combo to an app, press it, instantly jump to that app's space and focus it.
 - **Space hotkeys** — bind a key combo to a space number, press it, go there.
